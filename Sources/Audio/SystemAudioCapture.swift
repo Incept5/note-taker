@@ -4,12 +4,10 @@ import OSLog
 
 // MARK: - SystemAudioTap
 
-/// Manages the lifecycle of a Core Audio process tap: create tap → build aggregate device → run IO proc.
+/// Manages the lifecycle of a Core Audio global tap: create tap → build aggregate device → run IO proc.
 /// Cleanup order is critical: stop device → destroy IO proc → destroy aggregate device → destroy tap.
 final class SystemAudioTap {
     private let logger = Logger(subsystem: "com.incept5.NoteTaker", category: "SystemAudioTap")
-
-    private let process: AudioProcess
 
     private var processTapID: AudioObjectID = .unknown
     private var aggregateDeviceID: AudioObjectID = .unknown
@@ -18,18 +16,14 @@ final class SystemAudioTap {
     private(set) var tapStreamDescription: AudioStreamBasicDescription?
     private(set) var activated = false
 
-    init(process: AudioProcess) {
-        self.process = process
-    }
-
     /// Activate the tap. Must be called on the main actor (Core Audio Tap APIs require it).
     @MainActor
     func activate() throws {
         guard !activated else { return }
 
-        logger.debug("Activating tap for \(self.process.name, privacy: .public)")
+        logger.debug("Activating global system audio tap")
 
-        let tapDescription = CATapDescription(stereoMixdownOfProcesses: [process.objectID])
+        let tapDescription = CATapDescription(stereoGlobalTapButExcludeProcesses: [])
         tapDescription.uuid = UUID()
         tapDescription.muteBehavior = .unmuted
 
@@ -51,7 +45,7 @@ final class SystemAudioTap {
         let aggregateUID = UUID().uuidString
 
         let description: [String: Any] = [
-            kAudioAggregateDeviceNameKey: "NoteTaker-Tap-\(process.id)",
+            kAudioAggregateDeviceNameKey: "NoteTaker-GlobalTap",
             kAudioAggregateDeviceUIDKey: aggregateUID,
             kAudioAggregateDeviceMainSubDeviceKey: outputUID,
             kAudioAggregateDeviceIsPrivateKey: true,
@@ -107,7 +101,7 @@ final class SystemAudioTap {
         guard activated else { return }
         defer { activated = false }
 
-        logger.debug("Invalidating tap for \(self.process.name, privacy: .public)")
+        logger.debug("Invalidating global system audio tap")
 
         // 1. Stop the device
         if aggregateDeviceID.isValid {

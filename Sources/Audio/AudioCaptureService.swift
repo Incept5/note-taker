@@ -26,10 +26,10 @@ final class AudioCaptureService: ObservableObject {
 
     // MARK: - Public API
 
-    func startCapture(process: AudioProcess) throws {
+    func startCapture() throws {
         guard !isRecording else { return }
 
-        logger.info("Starting capture for \(process.name, privacy: .public)")
+        logger.info("Starting global audio capture")
 
         // Create output directory
         let dir = try createOutputDirectory()
@@ -39,7 +39,7 @@ final class AudioCaptureService: ObservableObject {
         let micURL = dir.appendingPathComponent("mic.wav")
 
         // 1. Create and activate system audio tap
-        let tap = SystemAudioTap(process: process)
+        let tap = SystemAudioTap()
         try tap.activate()
         self.systemTap = tap
 

@@ -45,7 +45,6 @@ final class AppState: ObservableObject {
     }
 
     @Published var phase: Phase = .idle
-    @Published var selectedProcess: AudioProcess?
     @Published var showingModelPicker = false
     @Published var navigation: NavigationDestination = .none
 
@@ -59,7 +58,6 @@ final class AppState: ObservableObject {
         }
     }
 
-    let discovery = AudioProcessDiscovery()
     let captureService = AudioCaptureService()
     let modelManager: ModelManager
     let transcriptionService: TranscriptionService
@@ -79,10 +77,8 @@ final class AppState: ObservableObject {
     }
 
     func startRecording() {
-        guard let process = selectedProcess else { return }
-
         do {
-            try captureService.startCapture(process: process)
+            try captureService.startCapture()
             let now = Date()
             phase = .recording(since: now)
 
@@ -90,7 +86,7 @@ final class AppState: ObservableObject {
             if let audio = buildCurrentAudio(startedAt: now) {
                 let record = try meetingStore.createMeeting(
                     startedAt: now,
-                    appName: process.name,
+                    appName: nil,
                     audio: audio
                 )
                 currentMeetingId = record.id
@@ -164,7 +160,7 @@ final class AppState: ObservableObject {
             do {
                 let summary = try await summarizationService.summarize(
                     transcript: transcription.combinedText,
-                    appName: selectedProcess?.name,
+                    appName: nil,
                     duration: audio.duration
                 )
                 phase = .summarized(audio, transcription, summary)
@@ -185,7 +181,6 @@ final class AppState: ObservableObject {
 
     func reset() {
         phase = .idle
-        selectedProcess = nil
         showingModelPicker = false
         currentMeetingId = nil
         meetingStore.loadRecentMeetings()

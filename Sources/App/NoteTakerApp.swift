@@ -16,9 +16,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Start monitoring audio processes
-        appState.discovery.startMonitoring()
-
         // Create menu bar status item
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
@@ -48,7 +45,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if popover.isShown {
             popover.performClose(nil)
         } else {
-            appState.discovery.refresh()
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         }
     }
