@@ -29,11 +29,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let pop = NSPopover()
-        pop.contentSize = NSSize(width: 320, height: 400)
+        pop.contentSize = NSSize(width: 320, height: 500)
         pop.behavior = .transient
-        pop.contentViewController = NSHostingController(
+        let hostingController = NSHostingController(
             rootView: MenuBarPopover(appState: appState)
         )
+        // Let the popover resize to fit SwiftUI content
+        hostingController.sizingOptions = [.preferredContentSize]
+        pop.contentViewController = hostingController
 
         self.statusItem = item
         self.popover = pop
