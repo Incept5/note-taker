@@ -64,6 +64,9 @@ final class AppState: ObservableObject {
     let summarizationService = SummarizationService()
     let meetingStore: MeetingStore
 
+    /// Callback for opening a meeting in the result window (set by AppDelegate).
+    var onShowResultWindow: ((MeetingSummary, String, String) -> Void)?
+
     private var currentMeetingId: String?
 
     init() {

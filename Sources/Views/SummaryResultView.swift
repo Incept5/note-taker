@@ -90,7 +90,7 @@ struct SummaryResultView: View {
             HStack(spacing: 8) {
                 Button("Copy") {
                     NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(formattedText, forType: .string)
+                    NSPasteboard.general.setString(summary.markdownText, forType: .string)
                 }
 
                 Button("Transcript") {
@@ -137,38 +137,4 @@ struct SummaryResultView: View {
         return "\(minutes)m \(secs)s"
     }
 
-    private var formattedText: String {
-        var text = "## Summary\n\(summary.summary)\n"
-
-        if !summary.keyPoints.isEmpty {
-            text += "\n## Key Points\n"
-            for point in summary.keyPoints {
-                text += "- \(point)\n"
-            }
-        }
-
-        if !summary.decisions.isEmpty {
-            text += "\n## Decisions\n"
-            for decision in summary.decisions {
-                text += "- \(decision)\n"
-            }
-        }
-
-        if !summary.actionItems.isEmpty {
-            text += "\n## Action Items\n"
-            for item in summary.actionItems {
-                let owner = item.owner.map { " (@\($0))" } ?? ""
-                text += "- [ ] \(item.task)\(owner)\n"
-            }
-        }
-
-        if !summary.openQuestions.isEmpty {
-            text += "\n## Open Questions\n"
-            for question in summary.openQuestions {
-                text += "- \(question)\n"
-            }
-        }
-
-        return text
-    }
 }

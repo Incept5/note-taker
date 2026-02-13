@@ -19,11 +19,27 @@ struct MeetingDetailView: View {
 
                 Spacer()
 
+                if meeting.summaryJSON != nil || meeting.combinedTranscript != nil {
+                    Button(action: {
+                        let summary = meeting.decodedSummary()
+                        let transcript = meeting.combinedTranscript ?? ""
+                        let duration = meeting.formattedDuration
+                        if let summary {
+                            appState.onShowResultWindow?(summary, transcript, duration)
+                        }
+                    }) {
+                        Image(systemName: "arrow.up.left.and.arrow.down.right")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Open in Window")
+                }
+
                 Menu {
                     Button("Copy Summary") {
                         if let summary = meeting.decodedSummary() {
                             NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(formatSummary(summary), forType: .string)
+                            NSPasteboard.general.setString(summary.markdownText, forType: .string)
                         }
                     }
                     .disabled(meeting.summaryJSON == nil)
@@ -178,28 +194,4 @@ struct MeetingDetailView: View {
         }
     }
 
-    private func formatSummary(_ summary: MeetingSummary) -> String {
-        var text = "## Summary\n\(summary.summary)\n"
-
-        if !summary.keyPoints.isEmpty {
-            text += "\n## Key Points\n"
-            for point in summary.keyPoints { text += "- \(point)\n" }
-        }
-        if !summary.decisions.isEmpty {
-            text += "\n## Decisions\n"
-            for decision in summary.decisions { text += "- \(decision)\n" }
-        }
-        if !summary.actionItems.isEmpty {
-            text += "\n## Action Items\n"
-            for item in summary.actionItems {
-                let owner = item.owner.map { " (@\($0))" } ?? ""
-                text += "- [ ] \(item.task)\(owner)\n"
-            }
-        }
-        if !summary.openQuestions.isEmpty {
-            text += "\n## Open Questions\n"
-            for q in summary.openQuestions { text += "- \(q)\n" }
-        }
-        return text
-    }
 }

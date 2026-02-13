@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Combine
 
 @main
 @MainActor
@@ -7,6 +8,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var popover: NSPopover?
     private let appState = AppState()
+    private let resultWindowController = ResultWindowController()
+    private var cancellables = Set<AnyCancellable>()
 
     static func main() {
         let app = NSApplication.shared
@@ -37,6 +40,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         self.statusItem = item
         self.popover = pop
+
+        // Auto-open result window when summarization completes
+        appState.$phase
+            .receive(on: RunLoop.main)
+            .sink { [weak self] phase in
+                guard let self else { return }
+                if case .summarized(let audio, let transcription, let summary) = phase {
+                    self.showResultWindow(
+                        summary: summary,
+                        transcript: transcription.combinedText,
+                        duration: audio.formattedDuration
+                    )
+                }
+            }
+            .store(in: &cancellables)
+
+        // Bridge for history → result window
+        appState.onShowResultWindow = { [weak self] summary, transcript, duration in
+            self?.showResultWindow(summary: summary, transcript: transcript, duration: duration)
+        }
     }
 
     @objc private func togglePopover() {
@@ -51,10 +74,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private func showResultWindow(summary: MeetingSummary, transcript: String, duration: String) {
+        popover?.performClose(nil)
+        resultWindowController.show(
+            summary: summary,
+            transcript: transcript,
+            duration: duration,
+            onNewRecording: { [weak self] in
+                self?.appState.reset()
+            }
+        )
+    }
+
     /// Reset app state if we're in a terminal phase (work is done, nothing in progress).
     private func resetIfTerminalState() {
         switch appState.phase {
         case .summarized, .transcribed, .error, .stopped:
+            resultWindowController.close()
             appState.reset()
         default:
             // For idle, recording, transcribing, summarizing — keep current state
