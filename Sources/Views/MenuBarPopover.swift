@@ -49,8 +49,28 @@ struct MenuBarPopover: View {
 
                 case .transcribed(let audio, let result):
                     TranscriptionResultView(
+                        appState: appState,
                         audio: audio,
                         result: result,
+                        onNewRecording: { appState.reset() }
+                    )
+
+                case .summarizing:
+                    SummarizingView(
+                        summarizationService: appState.summarizationService
+                    )
+
+                case .summarized(let audio, let transcription, let summary):
+                    SummaryResultView(
+                        summary: summary,
+                        audio: audio,
+                        transcription: transcription,
+                        onViewTranscript: {
+                            appState.phase = .transcribed(audio, transcription)
+                        },
+                        onRegenerate: {
+                            appState.startSummarization(audio: audio, transcription: transcription)
+                        },
                         onNewRecording: { appState.reset() }
                     )
 

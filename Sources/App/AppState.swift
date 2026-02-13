@@ -10,6 +10,8 @@ final class AppState: ObservableObject {
         case stopped(CapturedAudio)
         case transcribing(CapturedAudio, progress: Double)
         case transcribed(CapturedAudio, MeetingTranscription)
+        case summarizing(CapturedAudio, MeetingTranscription)
+        case summarized(CapturedAudio, MeetingTranscription, MeetingSummary)
         case error(String)
 
         static func == (lhs: Phase, rhs: Phase) -> Bool {
@@ -19,6 +21,8 @@ final class AppState: ObservableObject {
             case (.stopped(let a), .stopped(let b)): a.directory == b.directory
             case (.transcribing(let a, _), .transcribing(let b, _)): a.directory == b.directory
             case (.transcribed(let a, _), .transcribed(let b, _)): a.directory == b.directory
+            case (.summarizing(let a, _), .summarizing(let b, _)): a.directory == b.directory
+            case (.summarized(let a, _, _), .summarized(let b, _, _)): a.directory == b.directory
             case (.error(let a), .error(let b)): a == b
             default: false
             }
@@ -28,11 +32,13 @@ final class AppState: ObservableObject {
     @Published var phase: Phase = .idle
     @Published var selectedProcess: AudioProcess?
     @Published var showingModelPicker = false
+    @Published var selectedOllamaModel: String?
 
     let discovery = AudioProcessDiscovery()
     let captureService = AudioCaptureService()
     let modelManager: ModelManager
     let transcriptionService: TranscriptionService
+    let summarizationService = SummarizationService()
 
     init() {
         let mm = ModelManager()
@@ -82,6 +88,29 @@ final class AppState: ObservableObject {
                 phase = .transcribed(audio, result)
             } catch {
                 progressTask.cancel()
+                phase = .error(error.localizedDescription)
+            }
+        }
+    }
+
+    func startSummarization(audio: CapturedAudio, transcription: MeetingTranscription) {
+        guard let model = selectedOllamaModel else {
+            phase = .error(SummarizationError.noModelSelected.localizedDescription)
+            return
+        }
+
+        phase = .summarizing(audio, transcription)
+        summarizationService.selectedModel = model
+
+        Task {
+            do {
+                let summary = try await summarizationService.summarize(
+                    transcript: transcription.combinedText,
+                    appName: selectedProcess?.name,
+                    duration: audio.duration
+                )
+                phase = .summarized(audio, transcription, summary)
+            } catch {
                 phase = .error(error.localizedDescription)
             }
         }

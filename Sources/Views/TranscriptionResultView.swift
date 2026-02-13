@@ -1,9 +1,14 @@
 import SwiftUI
 
 struct TranscriptionResultView: View {
+    @ObservedObject var appState: AppState
     let audio: CapturedAudio
     let result: MeetingTranscription
     let onNewRecording: () -> Void
+
+    @State private var ollamaAvailable = false
+    @State private var ollamaModels: [OllamaModel] = []
+    @State private var checkingOllama = true
 
     var body: some View {
         VStack(spacing: 12) {
@@ -49,6 +54,11 @@ struct TranscriptionResultView: View {
 
             Divider()
 
+            // Ollama summarization section
+            ollamaSection
+
+            Divider()
+
             HStack(spacing: 12) {
                 Button("Copy") {
                     NSPasteboard.general.clearContents()
@@ -67,6 +77,73 @@ struct TranscriptionResultView: View {
             .padding(.bottom, 12)
         }
         .padding()
+        .task {
+            await checkOllama()
+        }
+    }
+
+    @ViewBuilder
+    private var ollamaSection: some View {
+        if checkingOllama {
+            HStack(spacing: 6) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Checking Ollama...")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        } else if ollamaAvailable {
+            VStack(spacing: 8) {
+                if ollamaModels.isEmpty {
+                    Text("No models in Ollama. Run: ollama pull llama3.2")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    HStack {
+                        Picker("Model", selection: Binding(
+                            get: { appState.selectedOllamaModel ?? "" },
+                            set: { appState.selectedOllamaModel = $0.isEmpty ? nil : $0 }
+                        )) {
+                            Text("Select model...").tag("")
+                            ForEach(ollamaModels, id: \.name) { model in
+                                Text("\(model.name) (\(model.parameterSize))")
+                                    .tag(model.name)
+                            }
+                        }
+                        .labelsHidden()
+
+                        Button("Summarize") {
+                            appState.startSummarization(audio: audio, transcription: result)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.purple)
+                        .disabled(appState.selectedOllamaModel == nil)
+                    }
+                }
+            }
+        } else {
+            VStack(spacing: 4) {
+                Text("Ollama not running")
+                    .font(.caption.bold())
+                    .foregroundStyle(.secondary)
+                Text("Start Ollama to enable AI summarization")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func checkOllama() async {
+        let client = OllamaClient()
+        ollamaAvailable = await client.checkAvailability()
+        if ollamaAvailable {
+            ollamaModels = (try? await client.listModels()) ?? []
+            // Auto-select first model if none selected
+            if appState.selectedOllamaModel == nil, let first = ollamaModels.first {
+                appState.selectedOllamaModel = first.name
+            }
+        }
+        checkingOllama = false
     }
 
     private func sectionHeader(_ title: String) -> some View {
