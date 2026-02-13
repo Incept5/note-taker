@@ -11,6 +11,11 @@ settings:
     SWIFT_VERSION: "5.9"
     MACOSX_DEPLOYMENT_TARGET: "14.2"
 
+packages:
+  WhisperKit:
+    url: https://github.com/argmaxinc/WhisperKit.git
+    from: "0.15.0"
+
 targets:
   NoteTaker:
     type: application
@@ -20,6 +25,8 @@ targets:
     resources:
       - Resources
       - Assets.xcassets
+    dependencies:
+      - package: WhisperKit
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.incept5.NoteTaker

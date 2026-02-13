@@ -10,9 +10,12 @@ struct MenuBarPopover: View {
                 Text("NoteTaker")
                     .font(.headline)
                 Spacer()
-                Text("Phase 1 PoC")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Button(action: { appState.showingModelPicker.toggle() }) {
+                    Image(systemName: "gearshape")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Model Settings")
             }
             .padding(.horizontal)
             .padding(.top, 12)
@@ -20,19 +23,40 @@ struct MenuBarPopover: View {
 
             Divider()
 
-            // Content based on phase
-            switch appState.phase {
-            case .idle:
-                AppPickerView(appState: appState)
+            // Model picker sheet
+            if appState.showingModelPicker {
+                ModelPickerView(
+                    modelManager: appState.modelManager,
+                    onDismiss: { appState.showingModelPicker = false }
+                )
+            } else {
+                // Content based on phase
+                switch appState.phase {
+                case .idle:
+                    AppPickerView(appState: appState)
 
-            case .recording(let since):
-                RecordingView(appState: appState, startedAt: since)
+                case .recording(let since):
+                    RecordingView(appState: appState, startedAt: since)
 
-            case .stopped(let audio):
-                stoppedView(audio)
+                case .stopped(let audio):
+                    stoppedView(audio)
 
-            case .error(let message):
-                errorView(message)
+                case .transcribing(_, let progress):
+                    TranscribingView(
+                        transcriptionService: appState.transcriptionService,
+                        progress: progress
+                    )
+
+                case .transcribed(let audio, let result):
+                    TranscriptionResultView(
+                        audio: audio,
+                        result: result,
+                        onNewRecording: { appState.reset() }
+                    )
+
+                case .error(let message):
+                    errorView(message)
+                }
             }
         }
         .frame(width: 320)
@@ -56,6 +80,18 @@ struct MenuBarPopover: View {
             }
             .padding(.horizontal)
 
+            if appState.modelManager.hasDownloadedModel {
+                Button("Transcribe") {
+                    appState.startTranscription(audio: audio)
+                }
+                .buttonStyle(.borderedProminent)
+            } else {
+                Button("Download Model to Transcribe") {
+                    appState.showingModelPicker = true
+                }
+                .buttonStyle(.borderedProminent)
+            }
+
             HStack(spacing: 12) {
                 Button("Show in Finder") {
                     NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: audio.directory.path)
@@ -64,7 +100,6 @@ struct MenuBarPopover: View {
                 Button("New Recording") {
                     appState.reset()
                 }
-                .buttonStyle(.borderedProminent)
             }
             .padding(.bottom, 12)
         }
