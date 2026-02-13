@@ -3,28 +3,35 @@ import GRDB
 import OSLog
 
 final class DatabaseManager {
-    static let shared = DatabaseManager()
+    static let shared: DatabaseManager = {
+        do {
+            return try DatabaseManager()
+        } catch {
+            // Return a manager with an in-memory database as fallback
+            let logger = Logger(subsystem: "com.incept5.NoteTaker", category: "DatabaseManager")
+            logger.error("Failed to open persistent database: \(error.localizedDescription). Using in-memory fallback.")
+            return try! DatabaseManager(inMemory: true)
+        }
+    }()
 
     let dbQueue: DatabaseQueue
 
     private let logger = Logger(subsystem: "com.incept5.NoteTaker", category: "DatabaseManager")
 
-    private init() {
-        do {
+    private init(inMemory: Bool = false) throws {
+        if inMemory {
+            dbQueue = try DatabaseQueue()
+        } else {
             let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
             let dbDir = appSupport.appendingPathComponent("NoteTaker", isDirectory: true)
             try FileManager.default.createDirectory(at: dbDir, withIntermediateDirectories: true)
 
             let dbPath = dbDir.appendingPathComponent("notetaker.db").path
-
-            let config = Configuration()
-
-            dbQueue = try DatabaseQueue(path: dbPath, configuration: config)
-            try migrate()
+            dbQueue = try DatabaseQueue(path: dbPath, configuration: Configuration())
             logger.info("Database opened at \(dbPath, privacy: .public)")
-        } catch {
-            fatalError("Failed to initialize database: \(error)")
         }
+
+        try migrate()
     }
 
     private func migrate() throws {

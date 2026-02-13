@@ -20,11 +20,14 @@ struct MeetingDetailView: View {
                 Spacer()
 
                 Menu {
-                    if let dirURL = meeting.recordingDirectoryURL {
-                        Button("Show in Finder") {
-                            NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: dirURL.path)
+                    Button("Copy Summary") {
+                        if let summary = meeting.decodedSummary() {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(formatSummary(summary), forType: .string)
                         }
                     }
+                    .disabled(meeting.summaryJSON == nil)
+
                     Button("Copy Transcript") {
                         if let text = meeting.combinedTranscript {
                             NSPasteboard.general.clearContents()
@@ -32,6 +35,14 @@ struct MeetingDetailView: View {
                         }
                     }
                     .disabled(meeting.combinedTranscript == nil)
+
+                    Divider()
+
+                    if let dirURL = meeting.recordingDirectoryURL {
+                        Button("Show in Finder") {
+                            NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: dirURL.path)
+                        }
+                    }
 
                     Divider()
 
@@ -165,5 +176,30 @@ struct MeetingDetailView: View {
             Text(text)
                 .font(.callout)
         }
+    }
+
+    private func formatSummary(_ summary: MeetingSummary) -> String {
+        var text = "## Summary\n\(summary.summary)\n"
+
+        if !summary.keyPoints.isEmpty {
+            text += "\n## Key Points\n"
+            for point in summary.keyPoints { text += "- \(point)\n" }
+        }
+        if !summary.decisions.isEmpty {
+            text += "\n## Decisions\n"
+            for decision in summary.decisions { text += "- \(decision)\n" }
+        }
+        if !summary.actionItems.isEmpty {
+            text += "\n## Action Items\n"
+            for item in summary.actionItems {
+                let owner = item.owner.map { " (@\($0))" } ?? ""
+                text += "- [ ] \(item.task)\(owner)\n"
+            }
+        }
+        if !summary.openQuestions.isEmpty {
+            text += "\n## Open Questions\n"
+            for q in summary.openQuestions { text += "- \(q)\n" }
+        }
+        return text
     }
 }

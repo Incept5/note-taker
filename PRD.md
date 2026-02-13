@@ -1,8 +1,8 @@
 # Note Taker - Product Requirements Document
 
-**Version:** 0.3 (Draft)
+**Version:** 1.0 (MVP)
 **Date:** 2025-02-13
-**Status:** Initial Draft
+**Status:** MVP Definition
 
 ---
 
@@ -76,7 +76,9 @@ This is the fundamental architectural distinction in this space:
 
 ## Product Vision
 
-Note Taker is a **privacy-first** conversation capture and summarization tool. It captures all audio from meetings — both the user's microphone and system audio (e.g. remote participants on Zoom/Teams) — transcribes speech locally, and generates meeting summaries using a **local LLM** — ensuring no conversation data ever leaves the user's machine.
+Note Taker is a **privacy-first** meeting transcription and summarization app for macOS. It lives in your menu bar. Click to start recording — it captures your microphone and system audio (Zoom, Teams, etc.) simultaneously. When you stop, it transcribes locally via WhisperKit and summarizes via your chosen Ollama model. Everything stays on your machine. No cloud, no accounts, no data leaving your device — ever.
+
+Think Granola, but fully local. The privacy guarantee is architectural, not contractual.
 
 ## Target Users
 
@@ -85,57 +87,67 @@ Note Taker is a **privacy-first** conversation capture and summarization tool. I
 - Teams operating under strict data governance or compliance policies
 - Security-conscious individuals who prefer architectural privacy guarantees over contractual ones
 
-## Core Features (MVP)
+## MVP User Flow
 
-### 1. Audio Capture
-- Capture audio from the built-in microphone (user's voice)
-- Capture system audio output (remote participants via Zoom, Teams, Meet, etc.) using Core Audio Taps
-- Separate mic and system audio streams (enables speaker attribution — "you" vs "others")
-- Simple start/stop controls
-- Visual indicator that recording is active
-- Support for conversations of up to 2 hours
+### 1. Menu Bar App
+- App installs and creates a **menu bar icon** (no Dock icon, no main window)
+- Clicking the icon opens a popover for all interactions
 
-### 2. Local Transcription
-- Speech-to-text using WhisperKit (MLX-optimized for Apple Silicon)
-- Near-real-time transcription
-- Basic speaker separation: user (mic) vs remote participants (system audio)
-- Speaker diarization within remote audio — stretch goal for MVP
-- Support for English initially
+### 2. Start Recording
+- User clicks "Start Recording" in the popover
+- App captures **microphone** (user's voice) and **system audio** (remote participants via Zoom/Teams/etc.) simultaneously
+- Popover shows a recording indicator with elapsed time and audio level meters
+- User clicks "Stop Recording" when done
 
-### 3. Conversation Summary
-- Generate a structured summary at the end of a conversation using a local LLM (via Ollama)
-- Summary should include:
-  - Key discussion points
-  - Decisions made
-  - Action items with owners (where identifiable)
-  - Open questions
-- User can regenerate or refine the summary
+### 3. Transcribe
+- After stopping, the app automatically transcribes both audio streams using WhisperKit
+- User sees a progress indicator while transcription runs
+- Transcription is batch (post-recording), not real-time — keeps the MVP simple
 
-### 4. Data Storage
-- All data stored locally on the user's machine
-- Transcripts and summaries saved in a searchable format
-- User can delete recordings, transcripts, and summaries at any time
+### 4. Summarize
+- Once transcribed, the user can summarize using their selected Ollama model
+- User picks from a dropdown of locally installed models (populated from `ollama list`)
+- Default model is remembered across sessions
+- Summary is structured: overview, key points, decisions, action items, open questions
+
+### 5. View Results
+- Summary and raw transcript are displayed in the popover
+- **Copy buttons** for both summary and raw transcript
+- User can regenerate the summary with a different model
+
+### 6. History
+- All sessions are persisted to a local SQLite database (summary + transcript + metadata)
+- User can browse previous sessions from the popover
+- Each past session shows its summary and transcript with copy buttons
+- User can delete sessions
+
+## Future Versions (Not MVP)
+
+- **Real-time transcription** — live speech-to-text scrolling during recording
+- **Speaker diarization** — identify individual remote speakers (beyond "you" vs "others")
+- **Multi-language support**
+- **Transcript editing** before summarization
+- **Automatic meeting detection** — auto-start when Zoom/Teams opens
+- **Calendar integration**
 
 ## Non-Functional Requirements
 
 ### Privacy & Security
 - **Zero cloud dependency** for audio processing, transcription, and summarization
 - No telemetry or data collection
-- All data encrypted at rest
-- No network calls during recording/transcription/summarization pipeline
-- Application should be verifiably offline during the capture-to-summary pipeline (ideally, users can confirm no network activity)
+- No network calls during the capture-to-summary pipeline (Ollama runs on localhost)
 
 ### Performance
-- Transcription should keep pace with or slightly trail real-time on M-series Macs
-- Summary generation should complete within 60 seconds of conversation end
+- Transcription should complete in reasonable time on M-series Macs (batch mode)
+- Summary generation should complete within 2 minutes of transcription end
 - Application should not degrade system performance significantly during recording
 
 ### Platform & Hardware
-- macOS desktop application (initial target)
-- Requires macOS 14+ (Sonoma) for Core Audio Taps
+- macOS desktop application
+- Requires macOS 14.2+ (Sonoma) for Core Audio Taps
 - Requires Apple Silicon (M1 minimum, M2 Pro+ recommended)
 - Minimum 16GB RAM (32GB recommended for best LLM performance)
-- Windows and Linux as future targets
+- Ollama must be installed and running with at least one model downloaded
 
 ## Technical Approach
 
@@ -165,6 +177,7 @@ However, Recap's `ProcessTap.swift` and dual-stream audio architecture are valua
 
 ## Out of Scope (MVP)
 
+- Real-time/streaming transcription during recording
 - Multi-language support
 - Cloud sync or backup
 - Collaborative features
@@ -172,6 +185,8 @@ However, Recap's `ProcessTap.swift` and dual-stream audio architecture are valua
 - Calendar integration
 - Automatic meeting detection
 - Windows/Linux support
+- Speaker diarization beyond "you" vs "others"
+- Transcript editing
 
 ### Why No Mobile App
 
@@ -188,21 +203,19 @@ The dealbreaker is system audio capture. On iOS, you cannot access another app's
 
 If a mobile product were ever built, it would be a **different product** — limited to in-person meeting capture via microphone, with smaller on-device models or a compromise on the "no cloud" privacy guarantee. We will not design the desktop architecture to accommodate this hypothetical; we'll keep the desktop app focused and well-separated, which is sufficient if mobile is ever revisited.
 
-## Open Questions
+## Resolved Questions
 
-1. **LLM model selection** — Which local model balances summary quality and performance? Llama 3 8B? Mistral 7B? Something larger for 32GB machines?
-2. **Speaker diarization** — Include in MVP or defer? We get basic "you vs others" for free from separate audio streams, but identifying individual remote speakers adds complexity.
-3. **Transcript editing** — Should users be able to edit transcripts before generating summaries?
-4. **Audio retention** — Should we keep the raw audio, or discard after transcription (like Granola does) to minimize storage and data exposure?
-5. **Streaming vs batch transcription** — WhisperKit supports batch. Streaming would give real-time feedback but adds complexity. Worth it for MVP?
+1. **LLM model selection** — User chooses from their locally installed Ollama models. We don't prescribe a specific model.
+2. **Speaker diarization** — Deferred beyond MVP. Basic "you vs others" from separate audio streams is sufficient.
+3. **Transcript editing** — Deferred beyond MVP.
+4. **Audio retention** — Keep raw audio files alongside transcripts for now. Can add cleanup/retention settings later.
+5. **Streaming vs batch transcription** — Batch only for MVP. Real-time transcription deferred to future version.
 
 ## Success Metrics
 
-- Transcription accuracy > 90% for clear English speech (WhisperKit benchmarks suggest ~98% is achievable)
-- Summary captures all key action items from a conversation
-- End-to-end pipeline (record -> transcribe -> summarize) works fully offline
+- Transcription accuracy > 90% for clear English speech
+- Summary captures key action items from a conversation
+- End-to-end pipeline (record → transcribe → summarize) works fully offline
 - Application runs comfortably on M1 Mac with 16GB RAM
-
----
-
-*This is a living document. Next steps: define application architecture, prototype audio capture with Core Audio Taps, and validate WhisperKit transcription quality.*
+- User can copy both summary and raw transcript to clipboard
+- Previous sessions are browsable and persistent across app restarts

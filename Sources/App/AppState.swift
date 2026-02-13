@@ -136,6 +136,14 @@ final class AppState: ObservableObject {
                 if let id = currentMeetingId {
                     try? meetingStore.updateWithTranscription(id: id, transcription: result)
                 }
+
+                // Auto-start summarization if an Ollama model is selected and available
+                if selectedOllamaModel != nil {
+                    let available = await summarizationService.ollamaClient.checkAvailability()
+                    if available {
+                        startSummarization(audio: audio, transcription: result)
+                    }
+                }
             } catch {
                 progressTask.cancel()
                 phase = .error(error.localizedDescription)

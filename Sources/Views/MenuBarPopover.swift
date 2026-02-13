@@ -52,6 +52,7 @@ struct MenuBarPopover: View {
             if appState.showingModelPicker {
                 ModelPickerView(
                     modelManager: appState.modelManager,
+                    appState: appState,
                     onDismiss: { appState.showingModelPicker = false }
                 )
             } else {

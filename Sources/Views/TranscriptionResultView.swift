@@ -95,9 +95,16 @@ struct TranscriptionResultView: View {
         } else if ollamaAvailable {
             VStack(spacing: 8) {
                 if ollamaModels.isEmpty {
-                    Text("No models in Ollama. Run: ollama pull llama3.2")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("No models installed in Ollama.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text("Run: ollama pull llama3.2")
+                            .font(.caption.monospaced())
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.secondary.opacity(0.1), in: RoundedRectangle(cornerRadius: 4))
+                    }
                 } else {
                     HStack {
                         Picker("Model", selection: Binding(
@@ -122,14 +129,27 @@ struct TranscriptionResultView: View {
                 }
             }
         } else {
-            VStack(spacing: 4) {
-                Text("Ollama not running")
+            VStack(alignment: .leading, spacing: 6) {
+                Label("Ollama not running", systemImage: "exclamationmark.triangle")
                     .font(.caption.bold())
-                    .foregroundStyle(.secondary)
-                Text("Start Ollama to enable AI summarization")
+                    .foregroundStyle(.orange)
+                Text("Install Ollama from ollama.ai, then run:")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Text("ollama pull llama3.2")
+                    .font(.caption.monospaced())
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.secondary.opacity(0.1), in: RoundedRectangle(cornerRadius: 4))
+
+                Button("Retry") {
+                    checkingOllama = true
+                    Task { await checkOllama() }
+                }
+                .controlSize(.small)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal)
         }
     }
 
