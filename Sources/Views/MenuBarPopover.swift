@@ -53,13 +53,20 @@ struct MenuBarPopover: View {
                 ModelPickerView(
                     modelManager: appState.modelManager,
                     appState: appState,
-                    onDismiss: { appState.showingModelPicker = false }
+                    onDismiss: { appState.showingModelPicker = false },
+                    onModelReady: {
+                        appState.showingModelPicker = false
+                        // If we're in the stopped state, auto-start transcription
+                        if case .stopped(let audio) = appState.phase {
+                            appState.startTranscription(audio: audio)
+                        }
+                    }
                 )
             } else {
                 // Content based on phase
                 switch appState.phase {
                 case .idle:
-                    AppPickerView(appState: appState)
+                    ReadyView(appState: appState)
 
                 case .recording(let since):
                     RecordingView(appState: appState, startedAt: since)
@@ -119,52 +126,17 @@ struct MenuBarPopover: View {
             Text("Duration: \(audio.formattedDuration)")
                 .foregroundStyle(.secondary)
 
-            VStack(alignment: .leading, spacing: 6) {
-                fileRow("System Audio", url: audio.systemAudioURL)
-                fileRow("Microphone", url: audio.microphoneURL)
+            Button("Transcribe") {
+                appState.startTranscription(audio: audio)
             }
-            .padding(.horizontal)
+            .buttonStyle(.borderedProminent)
 
-            let hasModel = appState.modelManager.hasDownloadedModel
-            if hasModel {
-                Button("Transcribe") {
-                    appState.startTranscription(audio: audio)
-                }
-                .buttonStyle(.borderedProminent)
-            } else {
-                Button("Download Model to Transcribe") {
-                    appState.showingModelPicker = true
-                }
-                .buttonStyle(.borderedProminent)
-            }
-
-            HStack(spacing: 12) {
-                Button("Show in Finder") {
-                    NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: audio.directory.path)
-                }
-
-                Button("New Recording") {
-                    appState.reset()
-                }
+            Button("New Recording") {
+                appState.reset()
             }
             .padding(.bottom, 12)
         }
         .padding()
-    }
-
-    private func fileRow(_ label: String, url: URL) -> some View {
-        HStack {
-            Image(systemName: "waveform")
-                .foregroundStyle(.secondary)
-            VStack(alignment: .leading) {
-                Text(label)
-                    .font(.caption.bold())
-                Text(url.lastPathComponent)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-        }
     }
 
     private func errorView(_ message: String) -> some View {

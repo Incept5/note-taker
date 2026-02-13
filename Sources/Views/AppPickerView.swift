@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct AppPickerView: View {
+struct ReadyView: View {
     @ObservedObject var appState: AppState
 
     var body: some View {

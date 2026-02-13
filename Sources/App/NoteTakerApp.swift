@@ -45,7 +45,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if popover.isShown {
             popover.performClose(nil)
         } else {
+            // Reset to idle when reopening after a completed workflow
+            resetIfTerminalState()
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        }
+    }
+
+    /// Reset app state if we're in a terminal phase (work is done, nothing in progress).
+    private func resetIfTerminalState() {
+        switch appState.phase {
+        case .summarized, .transcribed, .error, .stopped:
+            appState.reset()
+        default:
+            // For idle, recording, transcribing, summarizing — keep current state
+            appState.showingModelPicker = false
+            appState.navigation = .none
         }
     }
 }

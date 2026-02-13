@@ -21,10 +21,7 @@ final class TranscriptionService: ObservableObject {
             throw TranscriptionError.noModelSelected
         }
 
-        guard model.isDownloaded else {
-            throw TranscriptionError.modelNotDownloaded(model.id)
-        }
-
+        // WhisperKit auto-downloads if the model isn't cached locally
         try await loadWhisperKit(model: model.id)
 
         guard let pipe = whisperKit else {
@@ -143,12 +140,33 @@ final class TranscriptionService: ObservableObject {
     private func loadWhisperKit(model: String) async throws {
         if loadedModel == model, whisperKit != nil { return }
 
+        progressText = "Downloading model (first time only)..."
+
+        // Download the model first (no-op if already cached)
+        let modelURL: URL
+        do {
+            modelURL = try await WhisperKit.download(
+                variant: model,
+                from: "argmaxinc/whisperkit-coreml",
+                progressCallback: { [weak self] progress in
+                    Task { @MainActor in
+                        let pct = Int(progress.fractionCompleted * 100)
+                        self?.progressText = "Downloading model... \(pct)%"
+                    }
+                }
+            )
+        } catch {
+            throw TranscriptionError.modelLoadFailed("Failed to download model '\(model)': \(error.localizedDescription)")
+        }
+
         progressText = "Loading model..."
 
         let config = WhisperKitConfig(
-            model: model,
+            modelFolder: modelURL.path,
             verbose: false,
-            logLevel: .none
+            logLevel: .none,
+            load: true,
+            download: false
         )
 
         do {

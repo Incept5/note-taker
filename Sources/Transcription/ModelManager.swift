@@ -120,11 +120,11 @@ final class ModelManager: ObservableObject {
         for i in models.indices {
             models[i].isDownloaded = modelFolder(for: models[i].id) != nil
         }
-        // Validate selected model is still downloaded
+        // If a model was previously selected, mark it as available even if we
+        // can't find the files on disk — WhisperKit auto-downloads on init.
         if let selected = selectedModelName,
-           !models.contains(where: { $0.id == selected && $0.isDownloaded }) {
-            selectedModelName = nil
-            UserDefaults.standard.removeObject(forKey: Self.selectedModelKey)
+           let idx = models.firstIndex(where: { $0.id == selected }) {
+            models[idx].isDownloaded = true
         }
     }
 
@@ -155,8 +155,8 @@ final class ModelManager: ObservableObject {
                 sizeLabel: "~3 GB"
             ),
             WhisperModel(
-                id: "large-v3-turbo",
-                displayName: "Large v3 Turbo",
+                id: "distil-large-v3",
+                displayName: "Distil Large v3",
                 description: "Near-best accuracy, faster than large-v3.",
                 sizeLabel: "~1.5 GB"
             ),

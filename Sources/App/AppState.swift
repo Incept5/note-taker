@@ -74,6 +74,12 @@ final class AppState: ObservableObject {
 
         // Restore persisted settings
         selectedOllamaModel = UserDefaults.standard.string(forKey: "selectedOllamaModel")
+
+        // Ensure a valid WhisperKit model is always selected
+        let knownIds = mm.models.map(\.id)
+        if mm.selectedModelName == nil || !knownIds.contains(mm.selectedModelName!) {
+            mm.selectModel("large-v3")
+        }
     }
 
     func startRecording() {
@@ -105,10 +111,8 @@ final class AppState: ObservableObject {
                 try? meetingStore.updateWithRecordingComplete(id: id, duration: result.duration)
             }
 
-            // Auto-start transcription if a model is ready
-            if modelManager.selectedModel?.isDownloaded == true {
-                startTranscription(audio: result)
-            }
+            // Auto-start transcription
+            startTranscription(audio: result)
         } else {
             phase = .idle
         }
