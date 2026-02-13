@@ -5,11 +5,36 @@ struct MenuBarPopover: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            switch appState.navigation {
+            case .none:
+                mainContent
+            case .history:
+                HistoryView(appState: appState)
+            case .meetingDetail(let meeting):
+                MeetingDetailView(appState: appState, meeting: meeting)
+            }
+        }
+        .frame(width: 320)
+    }
+
+    private var mainContent: some View {
+        VStack(spacing: 0) {
             // Header
             HStack {
                 Text("NoteTaker")
                     .font(.headline)
                 Spacer()
+
+                Button(action: {
+                    appState.meetingStore.loadRecentMeetings()
+                    appState.navigation = .history
+                }) {
+                    Image(systemName: "clock")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Meeting History")
+
                 Button(action: { appState.showingModelPicker.toggle() }) {
                     Image(systemName: "gearshape")
                         .foregroundStyle(.secondary)
@@ -79,7 +104,6 @@ struct MenuBarPopover: View {
                 }
             }
         }
-        .frame(width: 320)
     }
 
     private func stoppedView(_ audio: CapturedAudio) -> some View {

@@ -1,6 +1,6 @@
 import Foundation
 
-struct MeetingTranscription {
+struct MeetingTranscription: Codable {
     let systemTranscript: TimestampedTranscript
     let micTranscript: TimestampedTranscript?
     let combinedText: String
@@ -8,12 +8,12 @@ struct MeetingTranscription {
     let modelUsed: String
 }
 
-struct TimestampedTranscript {
+struct TimestampedTranscript: Codable {
     let segments: [TranscriptSegment]
     let fullText: String
 }
 
-struct TranscriptSegment {
+struct TranscriptSegment: Codable {
     let text: String
     let startTime: TimeInterval
     let endTime: TimeInterval

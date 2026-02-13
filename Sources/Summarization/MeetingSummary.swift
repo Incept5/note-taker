@@ -1,6 +1,6 @@
 import Foundation
 
-struct MeetingSummary {
+struct MeetingSummary: Codable {
     let summary: String
     let keyPoints: [String]
     let decisions: [String]
@@ -10,7 +10,7 @@ struct MeetingSummary {
     let processingDuration: TimeInterval
 }
 
-struct ActionItem {
+struct ActionItem: Codable {
     let task: String
     let owner: String?
 }
