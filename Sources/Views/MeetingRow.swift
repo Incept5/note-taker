@@ -9,7 +9,7 @@ struct MeetingRow: View {
                 .frame(width: 24)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(meeting.appName ?? "Unknown App")
+                Text(meeting.appName ?? "Meeting")
                     .font(.callout.bold())
                     .lineLimit(1)
 

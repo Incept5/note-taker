@@ -81,7 +81,7 @@ struct MeetingDetailView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     // Meeting info header
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(meeting.appName ?? "Unknown App")
+                        Text(meeting.appName ?? "Meeting")
                             .font(.headline)
                         HStack {
                             Text(meeting.formattedDate)

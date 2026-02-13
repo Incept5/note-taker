@@ -1,5 +1,6 @@
 import SwiftUI
 import Combine
+import AppKit
 
 /// Centralized app state tying together process discovery, audio capture, and UI phase.
 @MainActor
@@ -95,7 +96,7 @@ final class AppState: ObservableObject {
             if let audio = buildCurrentAudio(startedAt: now) {
                 let record = try meetingStore.createMeeting(
                     startedAt: now,
-                    appName: nil,
+                    appName: detectMeetingApp(),
                     audio: audio
                 )
                 currentMeetingId = record.id
@@ -202,6 +203,34 @@ final class AppState: ObservableObject {
     }
 
     // MARK: - Helpers
+
+    /// Detect if a known meeting/conferencing app is currently running.
+    private func detectMeetingApp() -> String? {
+        let meetingApps: [(bundlePrefix: String, displayName: String)] = [
+            ("us.zoom.xos", "Zoom"),
+            ("com.microsoft.teams", "Microsoft Teams"),
+            ("com.cisco.webexmeetingsapp", "Webex"),
+            ("com.google.Chrome", "Google Meet"),       // Meet runs in Chrome
+            ("com.apple.Safari", "Safari"),              // Meet/other web conferencing
+            ("com.brave.Browser", "Brave"),
+            ("org.mozilla.firefox", "Firefox"),
+            ("com.microsoft.edgemac", "Microsoft Edge"),
+            ("com.slack.Slack", "Slack"),
+            ("com.apple.FaceTime", "FaceTime"),
+            ("com.discord.Discord", "Discord"),
+        ]
+
+        let runningBundles = NSWorkspace.shared.runningApplications
+            .compactMap { $0.bundleIdentifier }
+
+        for app in meetingApps {
+            if runningBundles.contains(where: { $0.hasPrefix(app.bundlePrefix) }) {
+                return app.displayName
+            }
+        }
+
+        return nil
+    }
 
     /// Build a minimal CapturedAudio for the DB record at recording start.
     /// The actual audio files are being written to; we just need the directory info.
