@@ -1,0 +1,29 @@
+name: NoteTaker
+options:
+  bundleIdPrefix: com.incept5
+  deploymentTarget:
+    macOS: "14.2"
+  xcodeVersion: "15.0"
+  minimumXcodeGenVersion: "2.35"
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MACOSX_DEPLOYMENT_TARGET: "14.2"
+
+targets:
+  NoteTaker:
+    type: application
+    platform: macOS
+    sources:
+      - Sources
+    resources:
+      - Resources
+      - Assets.xcassets
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.incept5.NoteTaker
+        INFOPLIST_FILE: Resources/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Resources/NoteTaker.entitlements
+        GENERATE_INFOPLIST_FILE: false
+        ENABLE_HARDENED_RUNTIME: true

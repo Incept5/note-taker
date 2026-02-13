@@ -1,0 +1,7 @@
+recap-reference/
+.idea/
+*.xcodeproj/
+xcuserdata/
+DerivedData/
+.DS_Store
+*.ips
