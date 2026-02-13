@@ -62,16 +62,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag {
+            showPopover()
+        }
+        return true
+    }
+
     @objc private func togglePopover() {
-        guard let popover, let button = statusItem?.button else { return }
+        guard let popover else { return }
 
         if popover.isShown {
             popover.performClose(nil)
         } else {
-            // Reset to idle when reopening after a completed workflow
-            resetIfTerminalState()
-            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            showPopover()
         }
+    }
+
+    private func showPopover() {
+        guard let popover, let button = statusItem?.button else { return }
+        resetIfTerminalState()
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
     }
 
     private func showResultWindow(summary: MeetingSummary, transcript: String, duration: String) {
