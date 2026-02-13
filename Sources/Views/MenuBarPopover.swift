@@ -80,7 +80,8 @@ struct MenuBarPopover: View {
             }
             .padding(.horizontal)
 
-            if appState.modelManager.hasDownloadedModel {
+            let hasModel = appState.modelManager.hasDownloadedModel
+            if hasModel {
                 Button("Transcribe") {
                     appState.startTranscription(audio: audio)
                 }
