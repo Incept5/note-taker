@@ -4,6 +4,9 @@ struct MeetingDetailView: View {
     @ObservedObject var appState: AppState
     let meeting: MeetingRecord
 
+    @State private var copiedSummary = false
+    @State private var copiedTranscript = false
+
     var body: some View {
         VStack(spacing: 0) {
             // Header
@@ -19,41 +22,21 @@ struct MeetingDetailView: View {
 
                 Spacer()
 
-                if meeting.summaryJSON != nil || meeting.combinedTranscript != nil {
-                    Button(action: {
-                        let summary = meeting.decodedSummary()
-                        let transcript = meeting.combinedTranscript ?? ""
-                        let duration = meeting.formattedDuration
-                        if let summary {
-                            appState.onShowResultWindow?(summary, transcript, duration)
-                        }
-                    }) {
-                        Image(systemName: "arrow.up.left.and.arrow.down.right")
-                            .foregroundStyle(.secondary)
+                VStack(spacing: 2) {
+                    Text(meeting.appName ?? "Meeting")
+                        .font(.headline)
+                    HStack(spacing: 4) {
+                        Text(meeting.formattedDate)
+                        Text("·")
+                        Text(meeting.formattedDuration)
                     }
-                    .buttonStyle(.plain)
-                    .help("Open in Window")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 }
 
+                Spacer()
+
                 Menu {
-                    Button("Copy Summary") {
-                        if let summary = meeting.decodedSummary() {
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(summary.markdownText, forType: .string)
-                        }
-                    }
-                    .disabled(meeting.summaryJSON == nil)
-
-                    Button("Copy Transcript") {
-                        if let text = meeting.combinedTranscript {
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(text, forType: .string)
-                        }
-                    }
-                    .disabled(meeting.combinedTranscript == nil)
-
-                    Divider()
-
                     if let dirURL = meeting.recordingDirectoryURL {
                         Button("Show in Finder") {
                             NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: dirURL.path)
@@ -77,112 +60,168 @@ struct MeetingDetailView: View {
 
             Divider()
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    // Meeting info header
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(meeting.appName ?? "Meeting")
-                            .font(.headline)
-                        HStack {
-                            Text(meeting.formattedDate)
-                            Text("·")
-                            Text(meeting.formattedDuration)
-                        }
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    }
-
-                    // Summary section
-                    if let summary = meeting.decodedSummary() {
-                        summarySection(summary)
-                    }
-
-                    // Transcript section
-                    if let transcript = meeting.combinedTranscript, !transcript.isEmpty {
-                        transcriptSection(transcript)
-                    }
-
-                    if meeting.combinedTranscript == nil && meeting.summaryJSON == nil {
-                        Text("No transcript or summary available for this meeting.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .center)
-                            .padding(.top, 20)
-                    }
-                }
-                .padding()
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func summarySection(_ summary: MeetingSummary) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            sectionHeader("Summary")
-            Text(summary.summary)
-                .font(.callout)
-
-            if !summary.keyPoints.isEmpty {
-                sectionHeader("Key Points")
-                ForEach(summary.keyPoints, id: \.self) { point in
-                    bulletPoint(point)
-                }
-            }
-
-            if !summary.decisions.isEmpty {
-                sectionHeader("Decisions")
-                ForEach(summary.decisions, id: \.self) { decision in
-                    bulletPoint(decision)
-                }
-            }
-
-            if !summary.actionItems.isEmpty {
-                sectionHeader("Action Items")
-                ForEach(summary.actionItems, id: \.task) { item in
-                    HStack(alignment: .top, spacing: 6) {
-                        Image(systemName: "square")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(item.task)
-                                .font(.callout)
-                            if let owner = item.owner {
-                                Text(owner)
-                                    .font(.caption)
-                                    .foregroundStyle(.blue)
+            // Side-by-side content
+            HStack(spacing: 0) {
+                // Left: Summary
+                panelView(
+                    title: "Summary",
+                    copied: $copiedSummary,
+                    hasContent: meeting.summaryJSON != nil,
+                    onCopy: {
+                        if let summary = meeting.decodedSummary() {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(summary.markdownText, forType: .string)
+                            copiedSummary = true
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                                copiedSummary = false
                             }
                         }
                     }
+                ) {
+                    if let summary = meeting.decodedSummary() {
+                        summaryContent(summary)
+                    } else {
+                        emptyState("No summary available")
+                    }
+                }
+
+                Divider()
+
+                // Right: Transcript
+                panelView(
+                    title: "Full Transcript",
+                    copied: $copiedTranscript,
+                    hasContent: meeting.combinedTranscript != nil,
+                    onCopy: {
+                        if let text = meeting.combinedTranscript {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(text, forType: .string)
+                            copiedTranscript = true
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                                copiedTranscript = false
+                            }
+                        }
+                    }
+                ) {
+                    if let transcript = meeting.combinedTranscript, !transcript.isEmpty {
+                        Text(transcript)
+                            .font(.callout)
+                            .textSelection(.enabled)
+                    } else {
+                        emptyState("No transcript available")
+                    }
                 }
             }
-
-            if !summary.openQuestions.isEmpty {
-                sectionHeader("Open Questions")
-                ForEach(summary.openQuestions, id: \.self) { q in
-                    bulletPoint(q)
-                }
-            }
-
-            Text("Summarized by \(summary.modelUsed)")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+            .frame(maxHeight: .infinity)
         }
     }
+
+    // MARK: - Panel
+
+    private func panelView<Content: View>(
+        title: String,
+        copied: Binding<Bool>,
+        hasContent: Bool,
+        onCopy: @escaping () -> Void,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(spacing: 0) {
+            // Panel header with copy button
+            HStack {
+                Text(title)
+                    .font(.subheadline.bold())
+                Spacer()
+                if hasContent {
+                    Button(action: onCopy) {
+                        HStack(spacing: 3) {
+                            Image(systemName: copied.wrappedValue ? "checkmark" : "doc.on.doc")
+                            if copied.wrappedValue {
+                                Text("Copied")
+                            }
+                        }
+                        .font(.caption)
+                        .foregroundStyle(copied.wrappedValue ? .green : .secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(.bar)
+
+            Divider()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 8) {
+                    content()
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Summary Content
 
     @ViewBuilder
-    private func transcriptSection(_ text: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            sectionHeader("Transcript")
-            Text(text)
-                .font(.callout)
-                .textSelection(.enabled)
+    private func summaryContent(_ summary: MeetingSummary) -> some View {
+        Text(summary.summary)
+            .font(.callout)
+
+        if !summary.keyPoints.isEmpty {
+            sectionHeader("Key Points")
+            ForEach(summary.keyPoints, id: \.self) { point in
+                bulletPoint(point)
+            }
         }
+
+        if !summary.decisions.isEmpty {
+            sectionHeader("Decisions")
+            ForEach(summary.decisions, id: \.self) { decision in
+                bulletPoint(decision)
+            }
+        }
+
+        if !summary.actionItems.isEmpty {
+            sectionHeader("Action Items")
+            ForEach(summary.actionItems, id: \.task) { item in
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: "square")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(item.task)
+                            .font(.callout)
+                        if let owner = item.owner {
+                            Text(owner)
+                                .font(.caption)
+                                .foregroundStyle(.blue)
+                        }
+                    }
+                }
+            }
+        }
+
+        if !summary.openQuestions.isEmpty {
+            sectionHeader("Open Questions")
+            ForEach(summary.openQuestions, id: \.self) { q in
+                bulletPoint(q)
+            }
+        }
+
+        Text("Summarized by \(summary.modelUsed)")
+            .font(.caption2)
+            .foregroundStyle(.tertiary)
     }
+
+    // MARK: - Helpers
 
     private func sectionHeader(_ title: String) -> some View {
         Text(title)
             .font(.subheadline.bold())
             .foregroundStyle(.primary)
+            .padding(.top, 4)
     }
 
     private func bulletPoint(_ text: String) -> some View {
@@ -194,4 +233,11 @@ struct MeetingDetailView: View {
         }
     }
 
+    private func emptyState(_ text: String) -> some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.top, 40)
+    }
 }

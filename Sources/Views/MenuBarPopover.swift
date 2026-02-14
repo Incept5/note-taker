@@ -4,17 +4,27 @@ struct MenuBarPopover: View {
     @ObservedObject var appState: AppState
 
     var body: some View {
-        VStack(spacing: 0) {
-            switch appState.navigation {
-            case .none:
-                mainContent
-            case .history:
-                HistoryView(appState: appState)
-            case .meetingDetail(let meeting):
-                MeetingDetailView(appState: appState, meeting: meeting)
+        Group {
+            if appState.showingOnboarding {
+                OnboardingView(appState: appState)
+                    .frame(width: 320)
+            } else {
+                VStack(spacing: 0) {
+                    switch appState.navigation {
+                    case .none:
+                        mainContent
+                    case .history:
+                        HistoryView(appState: appState)
+                    case .meetingDetail(let meeting):
+                        MeetingDetailView(appState: appState, meeting: meeting)
+                    }
+                }
+                .frame(
+                    width: appState.navigation.isMeetingDetail ? 640 : 320,
+                    height: appState.navigation.isMeetingDetail ? 500 : nil
+                )
             }
         }
-        .frame(width: 320)
     }
 
     private var mainContent: some View {

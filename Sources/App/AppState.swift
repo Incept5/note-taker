@@ -43,9 +43,15 @@ final class AppState: ObservableObject {
             default: false
             }
         }
+
+        var isMeetingDetail: Bool {
+            if case .meetingDetail = self { return true }
+            return false
+        }
     }
 
     @Published var phase: Phase = .idle
+    @Published var showingOnboarding = false
     @Published var showingModelPicker = false
     @Published var navigation: NavigationDestination = .none
 
@@ -75,6 +81,11 @@ final class AppState: ObservableObject {
         modelManager = mm
         transcriptionService = TranscriptionService(modelManager: mm)
         meetingStore = MeetingStore()
+
+        // Show onboarding if never completed
+        if !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding") {
+            showingOnboarding = true
+        }
 
         // Restore persisted settings
         selectedOllamaModel = UserDefaults.standard.string(forKey: "selectedOllamaModel")
@@ -200,6 +211,11 @@ final class AppState: ObservableObject {
         showingModelPicker = false
         currentMeetingId = nil
         meetingStore.loadRecentMeetings()
+    }
+
+    func completeOnboarding() {
+        UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
+        showingOnboarding = false
     }
 
     // MARK: - Helpers

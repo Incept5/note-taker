@@ -60,6 +60,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         appState.onShowResultWindow = { [weak self] summary, transcript, duration in
             self?.showResultWindow(summary: summary, transcript: transcript, duration: duration)
         }
+
+        // Auto-show popover on first launch for onboarding
+        if appState.showingOnboarding {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                self?.showPopover()
+            }
+        }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -99,6 +106,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Reset app state if we're in a terminal phase (work is done, nothing in progress).
     private func resetIfTerminalState() {
+        guard !appState.showingOnboarding else { return }
+
         switch appState.phase {
         case .summarized, .transcribed, .error, .stopped:
             resultWindowController.close()
