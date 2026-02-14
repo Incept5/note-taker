@@ -70,9 +70,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !flag {
-            showPopover()
-        }
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        showPopover()
         return true
     }
 
