@@ -51,9 +51,9 @@ brew install ollama
 ollama serve
 
 # Pull a model (in a separate terminal)
-ollama pull llama3.1:8b       # Good balance of speed and quality
+ollama pull qwen3-vl           # Recommended — excellent summarization quality
 # or
-ollama pull mistral            # Faster, slightly less capable
+ollama pull llama3.1:8b        # Good alternative, fast
 # or
 ollama pull llama3.1:70b       # Best quality, needs 48GB+ RAM
 ```

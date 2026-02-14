@@ -20,7 +20,7 @@ On first launch, macOS will ask for **Screen Recording** permission. This is req
 ## Setup
 
 1. **WhisperKit model** — Open Settings from the menu bar popover and download a transcription model. Smaller models (tiny, base) are faster; larger models (small, large) are more accurate.
-2. **Ollama model** — Install Ollama and pull a model (e.g. `ollama pull llama3.2`). Select it in Settings for automatic summarization after transcription.
+2. **Ollama model** — Install Ollama and pull a model. We recommend `ollama pull qwen3-vl` for excellent summarization quality. Select it in Settings for automatic summarization after transcription.
 
 ## Usage
 
