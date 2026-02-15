@@ -9,7 +9,7 @@
 
 ## Install from DMG
 
-1. Double-click `NoteTaker-1.0.0.dmg`
+1. Double-click `NoteTaker-1.0.1.dmg`
 2. Drag **NoteTaker** to your Applications folder
 3. Launch NoteTaker from Applications — it appears as a menu bar icon (no Dock icon)
 
