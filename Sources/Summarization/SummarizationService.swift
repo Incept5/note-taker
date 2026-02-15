@@ -95,34 +95,23 @@ final class SummarizationService: ObservableObject {
     }
 
     private func parseSummary(response: String, model: String, duration: TimeInterval) -> MeetingSummary {
-        // Try to parse as JSON first
-        if let data = response.data(using: .utf8),
-           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-            return MeetingSummary(
-                summary: json["summary"] as? String ?? response,
-                keyPoints: json["keyPoints"] as? [String] ?? [],
-                decisions: json["decisions"] as? [String] ?? [],
-                actionItems: parseActionItems(json["actionItems"]),
-                openQuestions: json["openQuestions"] as? [String] ?? [],
-                modelUsed: model,
-                processingDuration: duration
-            )
-        }
+        // Try multiple strategies to extract JSON from the response
+        let candidates = jsonCandidates(from: response)
 
-        // Try stripping markdown code fences and re-parsing
-        let stripped = stripCodeFences(response)
-        if stripped != response,
-           let data = stripped.data(using: .utf8),
-           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-            return MeetingSummary(
-                summary: json["summary"] as? String ?? response,
-                keyPoints: json["keyPoints"] as? [String] ?? [],
-                decisions: json["decisions"] as? [String] ?? [],
-                actionItems: parseActionItems(json["actionItems"]),
-                openQuestions: json["openQuestions"] as? [String] ?? [],
-                modelUsed: model,
-                processingDuration: duration
-            )
+        for candidate in candidates {
+            if let data = candidate.data(using: .utf8),
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               json["summary"] is String {
+                return MeetingSummary(
+                    summary: json["summary"] as? String ?? response,
+                    keyPoints: json["keyPoints"] as? [String] ?? [],
+                    decisions: json["decisions"] as? [String] ?? [],
+                    actionItems: parseActionItems(json["actionItems"]),
+                    openQuestions: json["openQuestions"] as? [String] ?? [],
+                    modelUsed: model,
+                    processingDuration: duration
+                )
+            }
         }
 
         // Fallback: treat entire response as summary text
@@ -135,6 +124,32 @@ final class SummarizationService: ObservableObject {
             modelUsed: model,
             processingDuration: duration
         )
+    }
+
+    /// Returns candidate JSON strings extracted from the LLM response, ordered by likelihood.
+    private func jsonCandidates(from response: String) -> [String] {
+        var candidates: [String] = []
+        let trimmed = response.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // 1. Raw response as-is
+        candidates.append(trimmed)
+
+        // 2. Strip markdown code fences
+        let stripped = stripCodeFences(trimmed)
+        if stripped != trimmed {
+            candidates.append(stripped)
+        }
+
+        // 3. Extract the outermost { ... } JSON object from surrounding text
+        if let firstBrace = trimmed.firstIndex(of: "{"),
+           let lastBrace = trimmed.lastIndex(of: "}") {
+            let extracted = String(trimmed[firstBrace...lastBrace])
+            if extracted != trimmed {
+                candidates.append(extracted)
+            }
+        }
+
+        return candidates
     }
 
     private func parseActionItems(_ value: Any?) -> [ActionItem] {
