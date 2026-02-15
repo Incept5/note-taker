@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.2
+
+- **Fixed summary formatting** — Summaries from some Ollama models were displaying as raw JSON instead of nicely formatted sections. Improved JSON parsing to handle LLM responses that include preamble text, trailing commentary, or markdown code fences around the JSON output.
+
 ## 1.0.1
 
 - **Improved meeting summaries** — Rewrote the summarization prompt to produce much more detailed and comprehensive meeting breakdowns. Summaries now include multi-paragraph overviews, thorough key points with full context, decisions with reasoning, specific action items with deadlines, and expanded open questions covering deferred topics. Someone who missed the meeting should be able to read the summary and understand everything that happened.
