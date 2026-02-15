@@ -212,4 +212,4 @@ NoteTaker makes **zero network calls** during the entire capture-to-summary pipe
 
 ## License
 
-All rights reserved. This software is distributed to a closed, trusted network only.
+Apache License 2.0. See [LICENSE](LICENSE) for details.

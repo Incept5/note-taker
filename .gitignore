@@ -1,9 +1,35 @@
-recap-reference/
-.idea/
+# macOS
+.DS_Store
+
+# Xcode
 *.xcodeproj/
 xcuserdata/
 DerivedData/
-.DS_Store
 *.ips
+
+# Build artifacts
 build/
+
+# Environment / secrets
 .env
+*.p12
+*.mobileprovision
+
+# Audio / data files (shouldn't be in repo)
+*.wav
+*.m4a
+*.sqlite
+*.db
+
+# Swift Package Manager
+.swiftpm/
+Packages/
+
+# IDE
+.idea/
+
+# Claude Code (AI assistant config)
+.claude/
+
+# Reference materials
+recap-reference/
