@@ -10,7 +10,6 @@ Think Granola, but fully local — the privacy guarantee is architectural, not c
 
 - `PRD.md` — Product requirements, competitive analysis (Granola vs local approach), feature scope
 - `ARCHITECTURE.md` — Technical architecture, component design, data flow, build phases
-- `recap-reference/` — Cloned Recap open-source project used as technical reference (not our code)
 
 ## Tech Stack
 
@@ -45,19 +44,10 @@ Think Granola, but fully local — the privacy guarantee is architectural, not c
 
 ## Key Technical Decisions
 
-- **Build fresh, not fork Recap** — Recap validates the tech stack but is incomplete/broken. We reference their patterns (especially `ProcessTap.swift` for Core Audio Taps) but write our own code.
 - **Native macOS (not Electron/Tauri)** — deeply coupled to Apple APIs (Core Audio Taps, WhisperKit Swift package, AVAudioEngine). Native gives best performance and smallest footprint.
 - **SQLite over Core Data** — lighter weight, simpler, no ORM overhead.
 - **Structured summary output** — prompt Ollama for JSON with distinct fields (key points, decisions, action items), not unstructured text.
 - **No mobile** — iOS cannot tap into other apps' audio (sandboxing). A mobile version would be a fundamentally different product.
-
-## Reference Code
-
-The `recap-reference/` directory contains the cloned Recap project. Key files to reference:
-- `Recap/Audio/Capture/Tap/ProcessTap.swift` — Core Audio Taps implementation
-- `Recap/Audio/Core/Utils/CoreAudioUtils.swift` — AudioObjectID property reading helpers
-- `Recap/Audio/Capture/MicrophoneCapture+AudioEngine.swift` — AVAudioEngine mic capture
-- `Recap/Audio/Processing/AudioRecordingCoordinator/AudioRecordingCoordinator.swift` — dual stream coordination
 
 ## Conventions
 
