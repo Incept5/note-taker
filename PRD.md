@@ -17,46 +17,6 @@ Granola is the leading product in this space. It captures mic + system audio and
 
 **Granola's trade-off:** Polished UX, high transcription accuracy, no hardware requirements — but your conversation audio passes through cloud infrastructure and your transcripts/summaries are stored on their servers.
 
-### Recap (Open Source, Local-First)
-[Recap](https://github.com/RecapAI/Recap) is an open-source macOS-native project solving the same problem with a local-first approach. It uses Core Audio Taps for system audio capture, WhisperKit (MLX) for local transcription, and Ollama for local summarization. It is currently incomplete and not recommended for production use, but validates that the fully-local technical approach is viable.
-
-**Recap's limitations:** Early/broken state, requires macOS 15+, needs 16GB+ RAM (32GB recommended), limited UX polish, no automatic meeting detection yet.
-
-#### Recap Codebase Analysis (Deep Dive)
-
-We performed a detailed analysis of Recap's codebase. Key findings:
-
-**What works and is valuable as reference:**
-- **Core Audio Taps implementation** (`ProcessTap.swift`) — demonstrates `AudioHardwareCreateProcessTap()` for driver-free system audio capture. Creates an aggregate audio device, registers an I/O callback, writes buffers to WAV files on a high-priority dispatch queue. This is the most valuable reference code.
-- **Dual audio stream architecture** — mic (via `AVAudioEngine`) and system audio (via `ProcessTap`) are captured as separate WAV files, transcribed independently, then combined with annotation. This gives "you vs others" speaker separation for free.
-- **WhisperKit integration** — models downloaded from Hugging Face, cached locally, transcription via `whisperKit.transcribe(audioPath)`. Batch-only (not streaming).
-- **LLM provider abstraction** — clean `LLMProviderType` protocol with Ollama and OpenRouter as concrete implementations. Ollama communicates on `localhost:11434`.
-- **Protocol-oriented design** — 30+ protocols for testability and dependency injection via a factory container (`DependencyContainer`).
-
-**What's broken or incomplete:**
-- README explicitly states "broken in its current state"
-- Auto-stop recording when meeting ends — not implemented (flag exists, logic not connected)
-- Live/streaming transcription — batch only, no real-time feedback during recording
-- Structured summary extraction — `keyPoints` and `actionItems` fields are empty stubs; summary is unstructured text
-- `fatalError` in CoreDataManager — app crashes if Core Data can't initialize
-- Meeting detection is fragile — polls window titles every 1 second via ScreenCaptureKit regex matching
-- Keychain integration incomplete — API keys stored as environment variables
-- Test coverage ~30% (target was 85%)
-
-**Architecture decisions we should adopt:**
-- Separate audio streams (mic vs system) as independent capture paths
-- Core Audio Taps for system audio (proven to work without drivers)
-- WhisperKit for transcription (MLX-optimized, ~2% WER)
-- Ollama for local LLM summarization
-- Protocol-oriented design for testability
-
-**Architecture decisions we should improve on:**
-- Core Data is heavyweight for this use case — SQLite or filesystem-based storage is simpler
-- Batch-only transcription means users wait after stopping — we should explore streaming
-- Unstructured summary text — we should use structured prompts to extract key points, decisions, action items as distinct fields
-- No error recovery — we need graceful degradation, not `fatalError`
-- Meeting detection via window title polling is brittle — defer this feature rather than ship it broken
-
 ### The Cloud vs Local Trade-off
 
 This is the fundamental architectural distinction in this space:
@@ -163,17 +123,6 @@ Think Granola, but fully local. The privacy guarantee is architectural, not cont
 ### Why Native macOS (Swift/SwiftUI)?
 
 Given our reliance on Core Audio Taps, WhisperKit (Swift package), and Apple Silicon optimizations, a native macOS app is the natural choice. Electron/Tauri would add overhead and complexity for wrapping APIs we need native access to anyway. This does mean macOS-only for now, but that aligns with our Apple Silicon hardware requirement.
-
-### Decision: Build Fresh, Reference Recap
-
-We will build from scratch rather than forking Recap. Reasons:
-- Recap is explicitly broken and incomplete
-- Core Data adds unnecessary complexity — we prefer SQLite/filesystem
-- Their architecture has production-quality issues (`fatalError`, missing error recovery)
-- We want structured summary output, not unstructured text
-- We want to explore streaming transcription, not just batch
-
-However, Recap's `ProcessTap.swift` and dual-stream audio architecture are valuable references for our Core Audio Taps implementation. We will study these patterns closely.
 
 ## Out of Scope (MVP)
 

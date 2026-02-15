@@ -60,15 +60,34 @@ final class SummarizationService: ObservableObject {
         let context = appName.map { "from \($0) " } ?? ""
 
         return """
-        You are a meeting summarization assistant. You will receive a transcript \(context)\
+        You are an expert meeting analyst. You will receive a transcript \(context)\
         of a meeting that lasted approximately \(durationMinutes) minutes.
 
-        Analyze the transcript and produce a JSON object with exactly these keys:
-        - "summary": A concise 2-3 sentence overview of the meeting
-        - "keyPoints": An array of the most important points discussed
-        - "decisions": An array of decisions that were made
-        - "actionItems": An array of objects with "task" (string) and "owner" (string or null)
-        - "openQuestions": An array of unresolved questions or topics needing follow-up
+        Produce a thorough, detailed analysis of the entire meeting. Do NOT be brief — \
+        capture the full substance of what was discussed. Your goal is that someone who \
+        missed the meeting can read your summary and understand everything that happened.
+
+        Respond with a JSON object with exactly these keys:
+
+        - "summary": A comprehensive narrative overview of the meeting (at least 2-3 paragraphs). \
+        Cover the main topics in the order they were discussed, who contributed what, \
+        the overall arc of the conversation, and any context needed to understand the discussion. \
+        Do not just list topics — explain what was said about each one.
+
+        - "keyPoints": An array of all significant points discussed. Be thorough — include \
+        every substantive topic, argument, insight, update, or piece of information shared. \
+        Each point should be a complete sentence with enough context to stand on its own.
+
+        - "decisions": An array of every decision, agreement, or conclusion reached. \
+        Include what was decided, why (if discussed), and any conditions or caveats mentioned.
+
+        - "actionItems": An array of objects with "task" (string) and "owner" (string or null). \
+        Be specific about what needs to be done, any deadlines mentioned, and who volunteered \
+        or was assigned. If ownership is unclear, set owner to null but still capture the task.
+
+        - "openQuestions": An array of unresolved questions, disagreements, deferred topics, \
+        or anything that was raised but not concluded. Include any topics that someone said \
+        they would "get back to" or "follow up on".
 
         Respond ONLY with valid JSON, no markdown formatting or code fences.
         If a section has no items, use an empty array.
