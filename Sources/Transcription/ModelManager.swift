@@ -40,40 +40,44 @@ final class ModelManager: ObservableObject {
         UserDefaults.standard.set(id, forKey: Self.selectedModelKey)
     }
 
-    func downloadModel(_ id: String) async throws {
-        guard !models.contains(where: { $0.id == id && $0.isDownloaded }) else { return }
-
-        downloadingModelId = id
-        downloadProgress = 0
-
-        do {
-            _ = try await WhisperKit.download(
-                variant: id,
-                from: Self.modelRepo,
-                progressCallback: { [weak self] progress in
-                    Task { @MainActor in
-                        self?.downloadProgress = progress.fractionCompleted
-                    }
-                }
-            )
-
-            if let idx = models.firstIndex(where: { $0.id == id }) {
-                models[idx].isDownloaded = true
-            }
-
-            // Auto-select if no model selected yet
-            if selectedModelName == nil {
-                selectModel(id)
-            }
-
-            downloadingModelId = nil
-            downloadProgress = 1.0
-        } catch {
-            downloadingModelId = nil
-            downloadProgress = 0
-            throw error
+    /// Mark a model as downloaded and auto-select it if needed.
+    func markModelDownloaded(_ id: String) {
+        if let idx = models.firstIndex(where: { $0.id == id }) {
+            models[idx].isDownloaded = true
+        }
+        if selectedModelName == nil {
+            selectModel(id)
         }
     }
+
+    /// Download a model in a detached task so the byte-by-byte iteration
+    /// in WhisperKit/HubApi runs on the cooperative thread pool, NOT on the
+    /// main thread where it would flood the autorelease pool.
+    /// Progress is reported via closure (not @Published) for the caller to
+    /// route to whatever UI it wants.
+    nonisolated func downloadModelDetached(
+        _ id: String,
+        onProgress: @escaping @Sendable (Double) -> Void,
+        onComplete: @escaping @Sendable (Bool) -> Void
+    ) {
+        Self.excludeHFCacheFromSpotlight()
+        Task.detached(priority: .userInitiated) {
+            do {
+                _ = try await WhisperKit.download(
+                    variant: id,
+                    from: "argmaxinc/whisperkit-coreml",
+                    progressCallback: { progress in
+                        onProgress(progress.fractionCompleted)
+                    }
+                )
+                onComplete(true)
+            } catch {
+                onComplete(false)
+            }
+        }
+    }
+
+    // MARK: - Model Lookup
 
     /// Returns the local folder path for a downloaded model, or nil if not found.
     func modelFolder(for variant: String) -> String? {
@@ -125,6 +129,17 @@ final class ModelManager: ObservableObject {
         if let selected = selectedModelName,
            let idx = models.firstIndex(where: { $0.id == selected }) {
             models[idx].isDownloaded = true
+        }
+    }
+
+    /// Prevent Spotlight from indexing the HuggingFace download cache.
+    private nonisolated static func excludeHFCacheFromSpotlight() {
+        let fm = FileManager.default
+        let hfCache = URL.homeDirectory.appending(path: ".cache/huggingface/hub")
+        try? fm.createDirectory(at: hfCache, withIntermediateDirectories: true)
+        let marker = hfCache.appending(path: ".metadata_never_index")
+        if !fm.fileExists(atPath: marker.path) {
+            fm.createFile(atPath: marker.path, contents: nil)
         }
     }
 

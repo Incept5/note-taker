@@ -10,6 +10,9 @@ struct ModelPickerView: View {
     @State private var ollamaAvailable = false
     @State private var checkingOllama = true
     @State private var editingURL: String = ""
+    @State private var downloadingId: String?
+    @State private var downloadProgress: Double = 0
+    @State private var downloadError: String?
 
     var body: some View {
         ScrollView {
@@ -219,6 +222,12 @@ struct ModelPickerView: View {
             ForEach(modelManager.models) { model in
                 whisperModelRow(model)
             }
+
+            if let error = downloadError {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
         }
     }
 
@@ -254,32 +263,25 @@ struct ModelPickerView: View {
                 } else {
                     Button("Select") {
                         modelManager.selectModel(model.id)
-                        onModelReady?()
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                 }
-            } else if modelManager.downloadingModelId == model.id {
+            } else if downloadingId == model.id {
                 VStack(spacing: 2) {
-                    ProgressView(value: modelManager.downloadProgress)
+                    ProgressView(value: downloadProgress)
                         .frame(width: 80)
-                    Text("\(Int(modelManager.downloadProgress * 100))%")
+                    Text("\(Int(downloadProgress * 100))%")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
             } else {
                 Button("Download") {
-                    Task {
-                        do {
-                            try await modelManager.downloadModel(model.id)
-                            onModelReady?()
-                        } catch {
-                            // Error is visible via downloadProgress reset
-                        }
-                    }
+                    startDownload(model.id)
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
+                .disabled(downloadingId != nil)
             }
         }
         .padding(.vertical, 8)
@@ -287,6 +289,38 @@ struct ModelPickerView: View {
         .background(
             isSelected ? Color.accentColor.opacity(0.08) : Color.secondary.opacity(0.04),
             in: RoundedRectangle(cornerRadius: 8)
+        )
+    }
+
+    // MARK: - Download
+
+    private func startDownload(_ modelId: String) {
+        downloadError = nil
+        downloadingId = modelId
+        downloadProgress = 0
+        modelManager.downloadModelDetached(
+            modelId,
+            onProgress: { fraction in
+                DispatchQueue.main.async {
+                    downloadProgress = fraction
+                }
+            },
+            onComplete: { success in
+                DispatchQueue.main.async {
+                    // Clear local @State first
+                    downloadingId = nil
+                    if !success {
+                        downloadError = "Download failed. Please try again."
+                    }
+                    // Defer @Published update to next runloop cycle so
+                    // the @State re-render completes first.
+                    if success {
+                        DispatchQueue.main.async {
+                            modelManager.markModelDownloaded(modelId)
+                        }
+                    }
+                }
+            }
         )
     }
 

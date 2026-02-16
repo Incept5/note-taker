@@ -22,49 +22,62 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             modelManager: appState.modelManager,
             appState: appState,
             onDismiss: { [weak self] in
-                self?.close()
+                self?.hide()
             },
             onModelReady: { [weak self] in
-                self?.close()
+                self?.hide()
                 if case .stopped(let audio) = self?.appState.phase {
                     self?.appState.startTranscription(audio: audio)
                 }
             }
         )
 
-        let hostingController = NSHostingController(rootView: content)
-
         let win = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 500, height: 550),
-            styleMask: [.titled, .closable, .resizable, .miniaturizable],
+            styleMask: [.titled, .closable, .resizable],
             backing: .buffered,
             defer: false
         )
         win.title = "NoteTaker Settings"
-        win.contentViewController = hostingController
+        win.animationBehavior = .none
+        win.isRestorable = false
         win.minSize = NSSize(width: 400, height: 350)
-        win.setFrameAutosaveName("NoteTakerSettingsWindow")
         win.delegate = self
+
+        let hostingView = NSHostingView(rootView: content)
+        hostingView.translatesAutoresizingMaskIntoConstraints = true
+        hostingView.autoresizingMask = [.width, .height]
+        win.contentView = hostingView
+
+        win.setContentSize(NSSize(width: 500, height: 550))
         win.center()
 
         self.window = win
 
-        // Show in Dock while settings window is open so user can Cmd+Tab to it
         NSApp.setActivationPolicy(.regular)
         win.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
 
     func close() {
-        window?.close()
+        hide()
+    }
+
+    /// Hide the window instead of closing it. This avoids tearing down the
+    /// NSHostingView, which can freeze the app if the autorelease pool was
+    /// corrupted by layout recursion during SwiftUI re-renders.
+    private func hide() {
+        window?.orderOut(nil)
+        NSApp.setActivationPolicy(.accessory)
     }
 
     // MARK: - NSWindowDelegate
 
-    nonisolated func windowWillClose(_ notification: Notification) {
+    /// Intercept the close button — hide instead of close to avoid teardown.
+    nonisolated func windowShouldClose(_ sender: NSWindow) -> Bool {
         MainActor.assumeIsolated {
-            window = nil
-            NSApp.setActivationPolicy(.accessory)
+            hide()
         }
+        return false
     }
 }

@@ -5,6 +5,8 @@ struct OnboardingWhisperStep: View {
     let onContinue: () -> Void
 
     @State private var downloadError: String?
+    @State private var downloadingId: String?
+    @State private var downloadProgress: Double = 0
 
     private var recommendedModels: [WhisperModel] {
         modelManager.models.filter { $0.id == "large-v3" || $0.id == "base" }
@@ -87,27 +89,41 @@ struct OnboardingWhisperStep: View {
             if model.isDownloaded {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundStyle(.green)
-            } else if modelManager.downloadingModelId == model.id {
+            } else if downloadingId == model.id {
                 VStack(spacing: 2) {
-                    ProgressView(value: modelManager.downloadProgress)
+                    ProgressView(value: downloadProgress)
                         .frame(width: 60)
-                    Text("\(Int(modelManager.downloadProgress * 100))%")
+                    Text("\(Int(downloadProgress * 100))%")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
             } else {
                 Button("Download") {
                     downloadError = nil
-                    Task {
-                        do {
-                            try await modelManager.downloadModel(model.id)
-                        } catch {
-                            downloadError = "Download failed: \(error.localizedDescription)"
+                    downloadingId = model.id
+                    downloadProgress = 0
+                    modelManager.downloadModelDetached(
+                        model.id,
+                        onProgress: { fraction in
+                            DispatchQueue.main.async {
+                                downloadProgress = fraction
+                            }
+                        },
+                        onComplete: { success in
+                            DispatchQueue.main.async {
+                                if success {
+                                    modelManager.markModelDownloaded(model.id)
+                                }
+                                downloadingId = nil
+                                if !success {
+                                    downloadError = "Download failed. Please try again."
+                                }
+                            }
                         }
-                    }
+                    )
                 }
                 .controlSize(.small)
-                .disabled(modelManager.downloadingModelId != nil)
+                .disabled(downloadingId != nil)
             }
         }
         .padding(.vertical, 8)
