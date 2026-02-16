@@ -19,6 +19,16 @@ packages:
     url: https://github.com/groue/GRDB.swift.git
     from: "7.0.0"
 
+schemes:
+  NoteTaker:
+    build:
+      targets:
+        NoteTaker: all
+    run:
+      config: Debug
+    archive:
+      config: Release
+
 targets:
   NoteTaker:
     type: application
