@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.3
+
+- **Remote Ollama server support** — You can now point NoteTaker at a remote Ollama instance instead of localhost. Useful for offloading summarization to a more powerful machine (e.g. a Mac Mini or Studio with 64GB+ RAM running larger models). Configure the server URL in Settings.
+- **Settings opens in a dedicated window** — Settings now opens in a proper resizable window instead of being crammed into the menu bar popover, giving more room for model selection and configuration.
+- **Quit button** — Added a quit button to the menu bar popover for easy app shutdown.
+
 ## 1.0.2
 
 - **Fixed summary formatting** — Summaries from some Ollama models were displaying as raw JSON instead of nicely formatted sections. Improved JSON parsing to handle LLM responses that include preamble text, trailing commentary, or markdown code fences around the JSON output.

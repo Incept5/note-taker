@@ -27,7 +27,7 @@ Note Taker is a native macOS menu bar application built with Swift/SwiftUI. It c
 │         │                  │                    │            │
 │  ┌──────┴───────┐  ┌──────┴────────┐  ┌───────┴──────────┐ │
 │  │ ProcessTap   │  │  WhisperKit   │  │     Ollama       │ │
-│  │ + AVAudio    │  │    (MLX)      │  │  (localhost)     │ │
+│  │ + AVAudio    │  │    (MLX)      │  │(local or remote) │ │
 │  └──────────────┘  └───────────────┘  └──────────────────┘  │
 ├─────────────────────────────────────────────────────────────┤
 │                     Storage Layer                           │
@@ -42,6 +42,7 @@ NoteTaker/
 ├── App/
 │   ├── NoteTakerApp.swift              # @main entry point
 │   ├── AppState.swift                  # Global app state (ObservableObject)
+│   ├── SettingsWindowController.swift  # Settings window management
 │   └── Dependencies.swift             # Service factory / DI container
 │
 ├── Audio/
@@ -127,7 +128,7 @@ User taps "Stop"
          ▼
 ┌─ SummarizationService.summarize(transcript) ───────────────┐
 │                                                             │
-│  Ollama (localhost:11434)                                   │
+│  Ollama (localhost:11434 or configured remote server)       │
 │  Structured prompt → JSON response                          │
 │                                                             │
 │  Returns:                                                   │
@@ -511,7 +512,7 @@ Each error maps to a user-facing message and a recovery action:
 | WhisperKit | Local speech-to-text | Swift package, MLX-optimized |
 | GRDB.swift | SQLite wrapper | Lightweight, Swift-native, no Core Data |
 
-Ollama is an external dependency (user installs separately) accessed via HTTP on localhost. No Swift package needed — just `URLSession` calls to `http://localhost:11434/api/chat`.
+Ollama is an external dependency (user installs separately) accessed via HTTP. Defaults to `http://localhost:11434` but configurable to a remote server via Settings. No Swift package needed — just `URLSession` calls to the configured Ollama base URL.
 
 ### 9. Permissions Required
 

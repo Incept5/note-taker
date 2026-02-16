@@ -107,7 +107,7 @@ Think Granola, but fully local. The privacy guarantee is architectural, not cont
 - Requires macOS 14.2+ (Sonoma) for Core Audio Taps
 - Requires Apple Silicon (M1 minimum, M2 Pro+ recommended)
 - Minimum 16GB RAM (32GB recommended for best LLM performance)
-- Ollama must be installed and running with at least one model downloaded
+- Ollama must be installed and running with at least one model downloaded (locally or on a remote server)
 
 ## Technical Approach
 

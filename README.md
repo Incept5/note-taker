@@ -60,6 +60,16 @@ ollama pull llama3.1:70b       # Best quality, needs 48GB+ RAM
 
 Ollama must be running (`ollama serve`) whenever you want to generate summaries. Transcription works without it.
 
+### Using a Remote Ollama Server
+
+By default NoteTaker connects to Ollama on `http://localhost:11434`. If you have a more powerful machine running Ollama on your network (e.g. a Mac Mini or Studio with more RAM for larger models), you can point NoteTaker at it:
+
+1. Open **Settings** (gear icon in the menu bar popover)
+2. Change the **Server URL** under Summarization to your remote machine's address (e.g. `http://192.168.1.50:11434`)
+3. Click **Connect** — NoteTaker will check availability and list the models on that server
+
+This lets you run larger models (70B+) on a dedicated machine while keeping NoteTaker lightweight on your laptop. Audio capture and transcription still run locally — only the summarization request is sent to the remote Ollama server.
+
 ## Usage
 
 ### Recording a Meeting
@@ -121,7 +131,7 @@ AppState (Phase-driven state machine)
 - **Core Audio Taps** (`AudioHardwareCreateProcessTap`) for driver-free system audio capture — no kernel extensions needed
 - **Separate audio streams** — mic and system audio are captured and transcribed independently, giving "you vs. others" speaker separation
 - **WhisperKit** for transcription — MLX-optimized for Apple Silicon, runs entirely on-device
-- **Ollama** for summarization — runs on localhost:11434, supports any model the user has installed
+- **Ollama** for summarization — defaults to localhost:11434, configurable to use a remote server for access to larger models
 - **SQLite over Core Data** — lighter weight, simpler, no ORM overhead
 - **Structured summary output** — Ollama is prompted to return JSON with distinct fields, not unstructured text
 - **No sandbox** — required for Core Audio Taps to function
@@ -173,7 +183,7 @@ Assets.xcassets/  App icon
 | [WhisperKit](https://github.com/argmaxinc/WhisperKit) | 0.15.0+ | Local speech-to-text (MLX-optimized) |
 | [GRDB.swift](https://github.com/groue/GRDB.swift) | 7.0.0+ | SQLite database wrapper |
 
-Ollama is an external runtime dependency, not a Swift package. It communicates via HTTP on `localhost:11434`.
+Ollama is an external runtime dependency, not a Swift package. It communicates via HTTP (default `localhost:11434`, configurable to a remote server).
 
 ### Building a Release (Signed DMG)
 
@@ -208,7 +218,7 @@ The signed and notarized DMG is written to `build/release/NoteTaker-{version}.dm
 
 ## Privacy
 
-NoteTaker makes **zero network calls** during the entire capture-to-summary pipeline. Ollama runs on localhost. WhisperKit runs on-device. Audio files, transcripts, and summaries are stored locally in `~/Library/Application Support/NoteTaker/`. No telemetry, no analytics, no cloud sync. Your conversations never leave your machine.
+NoteTaker makes **zero network calls** for audio capture and transcription — WhisperKit runs entirely on-device. Summarization calls Ollama, which defaults to localhost. If you configure a remote Ollama server, the transcript text is sent to that server for summarization — but this is a machine you control on your own network, not a third-party cloud service. Audio files, transcripts, and summaries are stored locally in `~/Library/Application Support/NoteTaker/`. No telemetry, no analytics, no cloud sync.
 
 ## License
 
