@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.4
+
+- **Fixed model download crash** — Downloading WhisperKit models from Settings no longer crashes or freezes the app. Downloads now run in a background thread, with progress shown inline next to the model.
+- **Improved Settings window stability** — Settings window now hides instead of closing, preventing freezes caused by SwiftUI layout recursion in NSHostingView. The window can be opened and closed freely without affecting the app.
+
 ## 1.0.3
 
 - **Remote Ollama server support** — You can now point NoteTaker at a remote Ollama instance instead of localhost. Useful for offloading summarization to a more powerful machine (e.g. a Mac Mini or Studio with 64GB+ RAM running larger models). Configure the server URL in Settings.
