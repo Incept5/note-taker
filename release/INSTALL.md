@@ -5,11 +5,11 @@
 - macOS 14.2+ (Sonoma)
 - Apple Silicon (M1 minimum, M2 Pro+ recommended)
 - 16GB RAM minimum (32GB recommended for LLM summarization)
-- [Ollama](https://ollama.ai) installed locally (for summarization)
+- [Ollama](https://ollama.ai) installed locally or accessible on your network (for summarization)
 
 ## Install from DMG
 
-1. Double-click `NoteTaker-1.0.2.dmg`
+1. Double-click `NoteTaker-1.0.3.dmg`
 2. Drag **NoteTaker** to your Applications folder
 3. Launch NoteTaker from Applications — it appears as a menu bar icon (no Dock icon)
 
@@ -21,6 +21,7 @@ On first launch, macOS will ask for **Screen Recording** permission. This is req
 
 1. **WhisperKit model** — Open Settings from the menu bar popover and download a transcription model. Smaller models (tiny, base) are faster; larger models (small, large) are more accurate.
 2. **Ollama model** — Install Ollama and pull a model. We recommend `ollama pull qwen3-vl` for excellent summarization quality. Select it in Settings for automatic summarization after transcription.
+3. **Remote Ollama (optional)** — If you have a more powerful machine running Ollama on your network, change the Server URL in Settings to point to it (e.g. `http://192.168.1.50:11434`).
 
 ## Usage
 

@@ -24,7 +24,7 @@ Record (mic + system audio)
 
 ## Installation
 
-1. Download `NoteTaker-1.0.1.dmg` from the latest release
+1. Download `NoteTaker-1.0.3.dmg` from the [latest release](https://github.com/Incept5/note-taker/releases/latest)
 2. Open the DMG and drag **NoteTaker** to your **Applications** folder
 3. Launch NoteTaker from Applications — it appears in the **menu bar** (no Dock icon)
 
