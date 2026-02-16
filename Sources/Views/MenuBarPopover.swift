@@ -51,6 +51,13 @@ struct MenuBarPopover: View {
                 }
                 .buttonStyle(.plain)
                 .help("Settings")
+
+                Button(action: { NSApplication.shared.terminate(nil) }) {
+                    Image(systemName: "power")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Quit NoteTaker")
             }
             .padding(.horizontal)
             .padding(.top, 12)
