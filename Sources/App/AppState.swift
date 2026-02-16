@@ -65,14 +65,24 @@ final class AppState: ObservableObject {
         }
     }
 
+    @Published var ollamaServerURL: String {
+        didSet {
+            UserDefaults.standard.set(ollamaServerURL, forKey: "ollamaServerURL")
+            summarizationService.updateBaseURL(ollamaServerURL)
+        }
+    }
+
     let captureService = AudioCaptureService()
     let modelManager: ModelManager
     let transcriptionService: TranscriptionService
-    let summarizationService = SummarizationService()
+    let summarizationService: SummarizationService
     let meetingStore: MeetingStore
 
     /// Callback for opening a meeting in the result window (set by AppDelegate).
     var onShowResultWindow: ((MeetingSummary, String, String) -> Void)?
+
+    /// Callback for opening the settings window (set by AppDelegate).
+    var onOpenSettings: (() -> Void)?
 
     private var currentMeetingId: String?
 
@@ -81,6 +91,11 @@ final class AppState: ObservableObject {
         modelManager = mm
         transcriptionService = TranscriptionService(modelManager: mm)
         meetingStore = MeetingStore()
+
+        // Restore Ollama server URL (default to localhost)
+        let savedURL = UserDefaults.standard.string(forKey: "ollamaServerURL") ?? OllamaClient.defaultBaseURL
+        ollamaServerURL = savedURL
+        summarizationService = SummarizationService(ollamaBaseURL: savedURL)
 
         // Show onboarding if never completed
         if !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding") {

@@ -7,10 +7,13 @@ struct OllamaModel {
 }
 
 final class OllamaClient {
-    private let baseURL = URL(string: "http://localhost:11434")!
+    static let defaultBaseURL = "http://localhost:11434"
+
+    private let baseURL: URL
     private let session: URLSession
 
-    init() {
+    init(baseURL: String = OllamaClient.defaultBaseURL) {
+        self.baseURL = URL(string: baseURL) ?? URL(string: OllamaClient.defaultBaseURL)!
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 300 // 5 minutes for slow summarization
         config.timeoutIntervalForResource = 300

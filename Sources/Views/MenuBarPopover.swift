@@ -45,12 +45,12 @@ struct MenuBarPopover: View {
                 .buttonStyle(.plain)
                 .help("Meeting History")
 
-                Button(action: { appState.showingModelPicker.toggle() }) {
+                Button(action: { appState.onOpenSettings?() }) {
                     Image(systemName: "gearshape")
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
-                .help("Model Settings")
+                .help("Settings")
             }
             .padding(.horizontal)
             .padding(.top, 12)
@@ -58,68 +58,52 @@ struct MenuBarPopover: View {
 
             Divider()
 
-            // Model picker sheet
-            if appState.showingModelPicker {
-                ModelPickerView(
-                    modelManager: appState.modelManager,
-                    appState: appState,
-                    onDismiss: { appState.showingModelPicker = false },
-                    onModelReady: {
-                        appState.showingModelPicker = false
-                        // If we're in the stopped state, auto-start transcription
-                        if case .stopped(let audio) = appState.phase {
-                            appState.startTranscription(audio: audio)
-                        }
-                    }
+            // Content based on phase
+            switch appState.phase {
+            case .idle:
+                ReadyView(appState: appState)
+
+            case .recording(let since):
+                RecordingView(appState: appState, startedAt: since)
+
+            case .stopped(let audio):
+                stoppedView(audio)
+
+            case .transcribing(_, let progress):
+                TranscribingView(
+                    transcriptionService: appState.transcriptionService,
+                    progress: progress
                 )
-            } else {
-                // Content based on phase
-                switch appState.phase {
-                case .idle:
-                    ReadyView(appState: appState)
 
-                case .recording(let since):
-                    RecordingView(appState: appState, startedAt: since)
+            case .transcribed(let audio, let result):
+                TranscriptionResultView(
+                    appState: appState,
+                    audio: audio,
+                    result: result,
+                    onNewRecording: { appState.reset() }
+                )
 
-                case .stopped(let audio):
-                    stoppedView(audio)
+            case .summarizing:
+                SummarizingView(
+                    summarizationService: appState.summarizationService
+                )
 
-                case .transcribing(_, let progress):
-                    TranscribingView(
-                        transcriptionService: appState.transcriptionService,
-                        progress: progress
-                    )
+            case .summarized(let audio, let transcription, let summary):
+                SummaryResultView(
+                    summary: summary,
+                    audio: audio,
+                    transcription: transcription,
+                    onViewTranscript: {
+                        appState.phase = .transcribed(audio, transcription)
+                    },
+                    onRegenerate: {
+                        appState.startSummarization(audio: audio, transcription: transcription)
+                    },
+                    onNewRecording: { appState.reset() }
+                )
 
-                case .transcribed(let audio, let result):
-                    TranscriptionResultView(
-                        appState: appState,
-                        audio: audio,
-                        result: result,
-                        onNewRecording: { appState.reset() }
-                    )
-
-                case .summarizing:
-                    SummarizingView(
-                        summarizationService: appState.summarizationService
-                    )
-
-                case .summarized(let audio, let transcription, let summary):
-                    SummaryResultView(
-                        summary: summary,
-                        audio: audio,
-                        transcription: transcription,
-                        onViewTranscript: {
-                            appState.phase = .transcribed(audio, transcription)
-                        },
-                        onRegenerate: {
-                            appState.startSummarization(audio: audio, transcription: transcription)
-                        },
-                        onNewRecording: { appState.reset() }
-                    )
-
-                case .error(let message):
-                    errorView(message)
-                }
+            case .error(let message):
+                errorView(message)
             }
         }
     }

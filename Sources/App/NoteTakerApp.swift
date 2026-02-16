@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var popover: NSPopover?
     private let appState = AppState()
     private let resultWindowController = ResultWindowController()
+    private lazy var settingsWindowController = SettingsWindowController(appState: appState)
     private var cancellables = Set<AnyCancellable>()
 
     static func main() {
@@ -59,6 +60,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Bridge for history → result window
         appState.onShowResultWindow = { [weak self] summary, transcript, duration in
             self?.showResultWindow(summary: summary, transcript: transcript, duration: duration)
+        }
+
+        // Open settings in a proper window
+        appState.onOpenSettings = { [weak self] in
+            guard let self else { return }
+            self.popover?.performClose(nil)
+            // Delay to let the popover fully dismiss — closing a popover deactivates
+            // the app, which can prevent the new window from appearing in front.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                self.settingsWindowController.show()
+            }
         }
 
         // Auto-show popover on first launch for onboarding

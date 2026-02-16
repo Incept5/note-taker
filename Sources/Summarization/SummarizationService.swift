@@ -5,8 +5,16 @@ final class SummarizationService: ObservableObject {
     @Published var progress: Double = 0
     @Published var progressText: String = ""
 
-    let ollamaClient = OllamaClient()
+    private(set) var ollamaClient: OllamaClient
     var selectedModel: String?
+
+    init(ollamaBaseURL: String = OllamaClient.defaultBaseURL) {
+        ollamaClient = OllamaClient(baseURL: ollamaBaseURL)
+    }
+
+    func updateBaseURL(_ url: String) {
+        ollamaClient = OllamaClient(baseURL: url)
+    }
 
     func summarize(transcript: String, appName: String?, duration: TimeInterval) async throws -> MeetingSummary {
         let start = Date()

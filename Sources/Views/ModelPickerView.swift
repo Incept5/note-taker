@@ -9,41 +9,19 @@ struct ModelPickerView: View {
     @State private var ollamaModels: [OllamaModel] = []
     @State private var ollamaAvailable = false
     @State private var checkingOllama = true
+    @State private var editingURL: String = ""
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text("Settings")
-                    .font(.headline)
-                Spacer()
-                Button(action: onDismiss) {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                ollamaSection
+                Divider()
+                whisperSection
             }
-            .padding(.horizontal)
-            .padding(.top, 12)
-            .padding(.bottom, 8)
-
-            Divider()
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    // Ollama summarization models
-                    ollamaSection
-
-                    Divider()
-
-                    // WhisperKit transcription models
-                    whisperSection
-                }
-                .padding(.horizontal)
-                .padding(.vertical, 8)
-            }
+            .padding(20)
         }
-        .padding(.bottom, 12)
         .task {
+            editingURL = appState.ollamaServerURL
             await loadOllamaModels()
         }
     }
@@ -52,57 +30,85 @@ struct ModelPickerView: View {
 
     @ViewBuilder
     private var ollamaSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Summarization Model")
-                .font(.subheadline.bold())
+        VStack(alignment: .leading, spacing: 16) {
+            Label("Summarization (Ollama)", systemImage: "brain")
+                .font(.title3.bold())
 
+            // Server URL
+            serverURLField
+
+            // Model list
             if checkingOllama {
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
                     ProgressView()
                         .controlSize(.small)
-                    Text("Checking Ollama...")
-                        .font(.caption)
+                    Text("Checking Ollama at \(appState.ollamaServerURL)...")
+                        .font(.callout)
                         .foregroundStyle(.secondary)
                 }
+                .padding(.vertical, 4)
             } else if !ollamaAvailable {
-                VStack(alignment: .leading, spacing: 6) {
-                    Label("Ollama not running", systemImage: "exclamationmark.triangle")
-                        .font(.caption.bold())
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("Cannot connect to Ollama", systemImage: "exclamationmark.triangle.fill")
+                        .font(.callout.bold())
                         .foregroundStyle(.orange)
-                    Text("Install Ollama from ollama.ai, then run:")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text("ollama pull llama3.2")
-                        .font(.caption.monospaced())
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.secondary.opacity(0.1), in: RoundedRectangle(cornerRadius: 4))
 
-                    Button("Retry") {
+                    Text("Make sure Ollama is running at the URL above.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+
+                    if appState.ollamaServerURL == OllamaClient.defaultBaseURL {
+                        Text("Install from ollama.ai, then run:")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                        Text("ollama pull llama3.2")
+                            .font(.callout.monospaced())
+                            .padding(8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+                    }
+
+                    Button("Retry Connection") {
                         checkingOllama = true
                         Task { await loadOllamaModels() }
                     }
+                    .buttonStyle(.bordered)
                     .controlSize(.small)
                 }
             } else if ollamaModels.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Ollama is running but no models are installed.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("Connected — no models installed", systemImage: "checkmark.circle")
+                        .font(.callout)
+                        .foregroundStyle(.green)
                     Text("Run: ollama pull llama3.2")
-                        .font(.caption.monospaced())
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.secondary.opacity(0.1), in: RoundedRectangle(cornerRadius: 4))
+                        .font(.callout.monospaced())
+                        .padding(8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
 
-                    Button("Refresh") {
+                    Button("Refresh Models") {
                         Task { await loadOllamaModels() }
                     }
+                    .buttonStyle(.bordered)
                     .controlSize(.small)
                 }
             } else {
-                ForEach(ollamaModels, id: \.name) { model in
-                    ollamaModelRow(model)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Label("Connected", systemImage: "checkmark.circle")
+                            .font(.callout)
+                            .foregroundStyle(.green)
+                        Spacer()
+                        Button("Refresh") {
+                            Task { await loadOllamaModels() }
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.mini)
+                    }
+
+                    ForEach(ollamaModels, id: \.name) { model in
+                        ollamaModelRow(model)
+                    }
                 }
             }
         }
@@ -113,7 +119,7 @@ struct ModelPickerView: View {
         let isSelected = appState.selectedOllamaModel == model.name
         HStack {
             VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 4) {
+                HStack(spacing: 6) {
                     Text(model.name)
                         .font(.body.bold())
                     if isSelected {
@@ -132,51 +138,99 @@ struct ModelPickerView: View {
             Spacer()
 
             if isSelected {
-                Text("Default")
+                Text("Selected")
                     .font(.caption)
                     .foregroundStyle(.green)
             } else {
                 Button("Select") {
                     appState.selectedOllamaModel = model.name
                 }
+                .buttonStyle(.bordered)
                 .controlSize(.small)
             }
         }
-        .padding(.vertical, 6)
-        .padding(.horizontal, 8)
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
         .background(
-            isSelected ? Color.purple.opacity(0.1) : Color.clear,
-            in: RoundedRectangle(cornerRadius: 6)
+            isSelected ? Color.purple.opacity(0.08) : Color.secondary.opacity(0.04),
+            in: RoundedRectangle(cornerRadius: 8)
         )
+    }
+
+    // MARK: - Server URL
+
+    @ViewBuilder
+    private var serverURLField: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Server URL")
+                .font(.callout.bold())
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 8) {
+                TextField("http://localhost:11434", text: $editingURL)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.body.monospaced())
+                    .onSubmit { applyServerURL() }
+
+                if editingURL != appState.ollamaServerURL {
+                    Button("Connect") { applyServerURL() }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                }
+
+                if appState.ollamaServerURL != OllamaClient.defaultBaseURL {
+                    Button("Reset") {
+                        editingURL = OllamaClient.defaultBaseURL
+                        applyServerURL()
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+            }
+
+            if appState.ollamaServerURL != OllamaClient.defaultBaseURL {
+                Label("Using remote server", systemImage: "network")
+                    .font(.caption)
+                    .foregroundStyle(.purple)
+            } else {
+                Text("Default: localhost. Change this to use a remote Ollama instance.")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+    }
+
+    private func applyServerURL() {
+        let url = editingURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !url.isEmpty else { return }
+        appState.ollamaServerURL = url
+        checkingOllama = true
+        ollamaModels = []
+        Task { await loadOllamaModels() }
     }
 
     // MARK: - WhisperKit Section
 
     private var whisperSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Transcription Model")
-                .font(.subheadline.bold())
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Transcription (WhisperKit)", systemImage: "waveform")
+                .font(.title3.bold())
 
             ForEach(modelManager.models) { model in
                 whisperModelRow(model)
-            }
-
-            if modelManager.selectedModelName != nil {
-                Text("Selected: \(modelManager.selectedModel?.displayName ?? "")")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
         }
     }
 
     @ViewBuilder
     private func whisperModelRow(_ model: WhisperModel) -> some View {
+        let isSelected = model.id == modelManager.selectedModelName
         HStack {
             VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 4) {
+                HStack(spacing: 6) {
                     Text(model.displayName)
                         .font(.body.bold())
-                    if model.id == modelManager.selectedModelName {
+                    if isSelected {
                         Image(systemName: "checkmark.circle.fill")
                             .foregroundStyle(.green)
                             .font(.caption)
@@ -193,7 +247,7 @@ struct ModelPickerView: View {
             Spacer()
 
             if model.isDownloaded {
-                if model.id == modelManager.selectedModelName {
+                if isSelected {
                     Text("Active")
                         .font(.caption)
                         .foregroundStyle(.green)
@@ -202,12 +256,13 @@ struct ModelPickerView: View {
                         modelManager.selectModel(model.id)
                         onModelReady?()
                     }
+                    .buttonStyle(.bordered)
                     .controlSize(.small)
                 }
             } else if modelManager.downloadingModelId == model.id {
                 VStack(spacing: 2) {
                     ProgressView(value: modelManager.downloadProgress)
-                        .frame(width: 60)
+                        .frame(width: 80)
                     Text("\(Int(modelManager.downloadProgress * 100))%")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
@@ -223,23 +278,22 @@ struct ModelPickerView: View {
                         }
                     }
                 }
+                .buttonStyle(.bordered)
                 .controlSize(.small)
             }
         }
-        .padding(.vertical, 6)
-        .padding(.horizontal, 8)
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
         .background(
-            model.id == modelManager.selectedModelName
-                ? Color.accentColor.opacity(0.1)
-                : Color.clear,
-            in: RoundedRectangle(cornerRadius: 6)
+            isSelected ? Color.accentColor.opacity(0.08) : Color.secondary.opacity(0.04),
+            in: RoundedRectangle(cornerRadius: 8)
         )
     }
 
     // MARK: - Helpers
 
     private func loadOllamaModels() async {
-        let client = OllamaClient()
+        let client = OllamaClient(baseURL: appState.ollamaServerURL)
         ollamaAvailable = await client.checkAvailability()
         if ollamaAvailable {
             ollamaModels = (try? await client.listModels()) ?? []
