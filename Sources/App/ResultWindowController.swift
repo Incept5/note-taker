@@ -25,15 +25,13 @@ final class ResultWindowController: NSObject, NSWindowDelegate {
             transcript: transcript,
             duration: duration,
             onNewRecording: { [weak self] in
-                self?.close()
+                self?.hide()
                 onNewRecording()
             },
             onClose: { [weak self] in
-                self?.close()
+                self?.hide()
             }
         )
-
-        let hostingController = NSHostingController(rootView: content)
 
         let win = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 900, height: 600),
@@ -42,9 +40,10 @@ final class ResultWindowController: NSObject, NSWindowDelegate {
             defer: false
         )
         win.title = "Meeting Summary"
-        win.contentViewController = hostingController
+        win.animationBehavior = .none
+        win.isRestorable = false
+        win.contentViewController = NSHostingController(rootView: content)
         win.minSize = NSSize(width: 700, height: 400)
-        win.setFrameAutosaveName("MeetingResultWindow")
         win.delegate = self
         win.center()
 
@@ -57,17 +56,25 @@ final class ResultWindowController: NSObject, NSWindowDelegate {
     }
 
     func close() {
-        window?.close()
-        // windowWillClose handles cleanup
+        hide()
+    }
+
+    /// Hide the window instead of closing it. This avoids tearing down the
+    /// NSHostingView, which can crash if the autorelease pool was corrupted
+    /// by layout recursion during SwiftUI re-renders.
+    private func hide() {
+        window?.orderOut(nil)
+        window = nil
+        NSApp.setActivationPolicy(.accessory)
     }
 
     // MARK: - NSWindowDelegate
 
-    nonisolated func windowWillClose(_ notification: Notification) {
+    /// Intercept the close button — hide instead of close to avoid teardown crash.
+    nonisolated func windowShouldClose(_ sender: NSWindow) -> Bool {
         MainActor.assumeIsolated {
-            window = nil
-            // Revert to accessory (menu bar only, no Dock icon)
-            NSApp.setActivationPolicy(.accessory)
+            hide()
         }
+        return false
     }
 }
