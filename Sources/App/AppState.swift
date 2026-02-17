@@ -73,6 +73,7 @@ final class AppState: ObservableObject {
     }
 
     let captureService = AudioCaptureService()
+    let audioDeviceManager = AudioDeviceManager()
     let modelManager: ModelManager
     let transcriptionService: TranscriptionService
     let summarizationService: SummarizationService
@@ -117,7 +118,7 @@ final class AppState: ObservableObject {
 
     func startRecording() {
         do {
-            try captureService.startCapture()
+            try captureService.startCapture(inputDeviceID: audioDeviceManager.selectedDeviceID)
             let now = Date()
             phase = .recording(since: now)
 

@@ -21,6 +21,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         let content = ModelPickerView(
             modelManager: appState.modelManager,
             appState: appState,
+            audioDeviceManager: appState.audioDeviceManager,
             onDismiss: { [weak self] in
                 self?.hide()
             },

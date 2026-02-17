@@ -1,8 +1,10 @@
 import AVFoundation
+import AudioToolbox
 import OSLog
 
 /// Captures microphone audio using AVAudioEngine, writing to a WAV file.
 /// Accepts an optional target format from SystemAudioTap for format synchronization.
+/// Supports selecting a specific input device by AudioDeviceID.
 final class MicrophoneCapture {
     private let logger = Logger(subsystem: "com.incept5.NoteTaker", category: "MicrophoneCapture")
 
@@ -16,6 +18,7 @@ final class MicrophoneCapture {
 
     private var preparationTask: Task<Void, Never>?
     private var isPreWarmed = false
+    private var preparedDeviceID: AudioDeviceID?
 
     private(set) var isRecording = false
 
@@ -23,7 +26,7 @@ final class MicrophoneCapture {
     var onLevelUpdate: ((Float) -> Void)?
 
     init() {
-        preWarm()
+        preWarm(deviceID: nil)
     }
 
     deinit {
@@ -34,11 +37,11 @@ final class MicrophoneCapture {
     // MARK: - Pre-warming
 
     /// Pre-warm AVAudioEngine in background to avoid 50-100ms latency on first use.
-    private func preWarm() {
+    private func preWarm(deviceID: AudioDeviceID?) {
         preparationTask = Task.detached(priority: .utility) { [weak self] in
             guard let self else { return }
             do {
-                try self.prepareEngine()
+                try self.prepareEngine(deviceID: deviceID)
                 await MainActor.run { self.isPreWarmed = true }
                 self.logger.info("AVAudioEngine pre-warmed")
             } catch {
@@ -47,8 +50,29 @@ final class MicrophoneCapture {
         }
     }
 
-    private func prepareEngine() throws {
+    private func prepareEngine(deviceID: AudioDeviceID?) throws {
         let engine = AVAudioEngine()
+
+        // Set specific input device if requested
+        if let deviceID {
+            let audioUnit = engine.inputNode.audioUnit!
+            var devID = deviceID
+            let status = AudioUnitSetProperty(
+                audioUnit,
+                kAudioOutputUnitProperty_CurrentDevice,
+                kAudioUnitScope_Global,
+                0,
+                &devID,
+                UInt32(MemoryLayout<AudioDeviceID>.size)
+            )
+            if status != noErr {
+                logger.error("Failed to set input device \(deviceID): \(status)")
+                // Fall through — will use default device
+            } else {
+                logger.info("Set input device to ID \(deviceID)")
+            }
+        }
+
         let inputNode = engine.inputNode
         let format = inputNode.inputFormat(forBus: 0)
 
@@ -63,6 +87,7 @@ final class MicrophoneCapture {
         self.audioEngine = engine
         self.mixerNode = mixer
         self.inputFormat = format
+        self.preparedDeviceID = deviceID
 
         logger.info("Engine prepared: \(format.sampleRate)Hz, \(format.channelCount)ch")
     }
@@ -78,14 +103,16 @@ final class MicrophoneCapture {
 
     /// Start capturing microphone audio to `outputURL`.
     /// If `tapStreamDescription` is provided, the output file will match that format.
-    func start(outputURL: URL, tapStreamDescription: AudioStreamBasicDescription? = nil) throws {
+    /// If `deviceID` is provided, captures from that specific input device.
+    func start(outputURL: URL, tapStreamDescription: AudioStreamBasicDescription? = nil, deviceID: AudioDeviceID? = nil) throws {
         guard !isRecording else { return }
 
         waitForPreWarm()
 
-        // If engine wasn't pre-warmed, prepare now
-        if audioEngine == nil {
-            try prepareEngine()
+        // Re-prepare engine if device changed or engine wasn't pre-warmed
+        if audioEngine == nil || preparedDeviceID != deviceID {
+            cleanup()
+            try prepareEngine(deviceID: deviceID)
         }
 
         guard let engine = audioEngine, let mixer = mixerNode, let inputFmt = inputFormat else {

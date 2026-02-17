@@ -3,6 +3,7 @@ import SwiftUI
 struct ModelPickerView: View {
     @ObservedObject var modelManager: ModelManager
     @ObservedObject var appState: AppState
+    @ObservedObject var audioDeviceManager: AudioDeviceManager
     let onDismiss: () -> Void
     var onModelReady: (() -> Void)? = nil
 
@@ -17,6 +18,8 @@ struct ModelPickerView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
+                audioInputSection
+                Divider()
                 ollamaSection
                 Divider()
                 whisperSection
@@ -27,6 +30,93 @@ struct ModelPickerView: View {
             editingURL = appState.ollamaServerURL
             await loadOllamaModels()
         }
+    }
+
+    // MARK: - Audio Input Section
+
+    @ViewBuilder
+    private var audioInputSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Microphone Input", systemImage: "mic")
+                .font(.title3.bold())
+
+            let devices = audioDeviceManager.inputDevices
+            let selectedUID = audioDeviceManager.selectedInputDeviceUID
+
+            if devices.isEmpty {
+                Label("No input devices found", systemImage: "exclamationmark.triangle.fill")
+                    .font(.callout)
+                    .foregroundStyle(.orange)
+            } else {
+                // System Default option
+                audioDeviceRow(
+                    name: "System Default",
+                    detail: devices.first(where: { $0.isDefault })?.name,
+                    isSelected: selectedUID == nil
+                ) {
+                    audioDeviceManager.selectedInputDeviceUID = nil
+                }
+
+                // Individual devices
+                ForEach(devices) { device in
+                    audioDeviceRow(
+                        name: device.name,
+                        detail: device.isDefault ? "Default" : nil,
+                        isSelected: selectedUID == device.uid
+                    ) {
+                        audioDeviceManager.selectedInputDeviceUID = device.uid
+                    }
+                }
+            }
+
+            // If selected device is disconnected, show warning
+            if let selected = selectedUID,
+               !devices.contains(where: { $0.uid == selected }) {
+                Label("Selected device disconnected — will use system default", systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func audioDeviceRow(name: String, detail: String?, isSelected: Bool, onSelect: @escaping () -> Void) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(name)
+                        .font(.body.bold())
+                    if isSelected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                            .font(.caption)
+                    }
+                }
+                if let detail {
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Spacer()
+
+            if isSelected {
+                Text("Active")
+                    .font(.caption)
+                    .foregroundStyle(.green)
+            } else {
+                Button("Select") { onSelect() }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+            }
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .background(
+            isSelected ? Color.blue.opacity(0.08) : Color.secondary.opacity(0.04),
+            in: RoundedRectangle(cornerRadius: 8)
+        )
     }
 
     // MARK: - Ollama Section

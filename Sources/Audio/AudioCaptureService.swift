@@ -26,7 +26,7 @@ final class AudioCaptureService: ObservableObject {
 
     // MARK: - Public API
 
-    func startCapture() throws {
+    func startCapture(inputDeviceID: AudioDeviceID? = nil) throws {
         guard !isRecording else { return }
 
         logger.info("Starting global audio capture")
@@ -63,7 +63,7 @@ final class AudioCaptureService: ObservableObject {
                 self?.micAudioLevel = level
             }
         }
-        try mic.start(outputURL: micURL, tapStreamDescription: recorder.tapStreamDescription)
+        try mic.start(outputURL: micURL, tapStreamDescription: recorder.tapStreamDescription, deviceID: inputDeviceID)
 
         recordingStartTime = Date()
         isRecording = true
