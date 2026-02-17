@@ -123,6 +123,11 @@ final class SummarizationService: ObservableObject {
             }
         }
 
+        // Last resort: try regex extraction of individual JSON fields
+        if let regexSummary = extractRegexSummary(from: response, model: model, duration: duration) {
+            return regexSummary
+        }
+
         // Fallback: treat entire response as summary text
         return MeetingSummary(
             summary: response,
@@ -158,7 +163,53 @@ final class SummarizationService: ObservableObject {
             }
         }
 
+        // 4. Fix unescaped newlines inside JSON string values — LLMs often produce
+        //    literal newlines within strings which makes JSONSerialization reject the payload.
+        //    Escape any newline/tab that appears between quotes.
+        for base in [trimmed, stripped] {
+            let fixed = fixUnescapedNewlines(in: base)
+            if fixed != base {
+                candidates.append(fixed)
+            }
+        }
+
         return candidates
+    }
+
+    /// Escapes literal newlines and tabs that appear inside JSON string values.
+    private func fixUnescapedNewlines(in text: String) -> String {
+        var result = ""
+        var insideString = false
+        var prevWasBackslash = false
+        for char in text {
+            if insideString {
+                if char == "\\" && !prevWasBackslash {
+                    prevWasBackslash = true
+                    result.append(char)
+                    continue
+                }
+                if char == "\"" && !prevWasBackslash {
+                    insideString = false
+                    result.append(char)
+                } else if char == "\n" {
+                    result.append("\\n")
+                } else if char == "\r" {
+                    result.append("\\r")
+                } else if char == "\t" {
+                    result.append("\\t")
+                } else {
+                    result.append(char)
+                }
+                prevWasBackslash = false
+            } else {
+                if char == "\"" {
+                    insideString = true
+                }
+                result.append(char)
+                prevWasBackslash = false
+            }
+        }
+        return result
     }
 
     private func parseActionItems(_ value: Any?) -> [ActionItem] {
@@ -168,6 +219,92 @@ final class SummarizationService: ObservableObject {
             let owner = dict["owner"] as? String
             return ActionItem(task: task, owner: owner)
         }
+    }
+
+    /// Last-resort extraction: pull individual fields from the response using regex patterns
+    /// when the full JSON fails to parse (e.g. deeply malformed but still has recognizable structure).
+    private func extractRegexSummary(from response: String, model: String, duration: TimeInterval) -> MeetingSummary? {
+        // Look for "summary": "..." pattern — the value may span many lines
+        guard let summaryMatch = extractJSONStringValue(key: "summary", from: response),
+              !summaryMatch.isEmpty else {
+            return nil
+        }
+
+        let keyPoints = extractJSONArrayOfStrings(key: "keyPoints", from: response)
+        let openQuestions = extractJSONArrayOfStrings(key: "openQuestions", from: response)
+        let decisions = extractJSONArrayOfStrings(key: "decisions", from: response)
+
+        return MeetingSummary(
+            summary: summaryMatch,
+            keyPoints: keyPoints,
+            decisions: decisions,
+            actionItems: parseActionItems(nil), // too complex for regex
+            openQuestions: openQuestions,
+            modelUsed: model,
+            processingDuration: duration
+        )
+    }
+
+    /// Extracts the string value for a given key from a JSON-like string, handling unescaped newlines.
+    private func extractJSONStringValue(key: String, from text: String) -> String? {
+        // Find "key" : "value..." handling the fact that value may contain unescaped newlines
+        guard let keyRange = text.range(of: "\"\(key)\"") else { return nil }
+        let afterKey = text[keyRange.upperBound...]
+
+        // Skip whitespace and colon
+        guard let colonIndex = afterKey.firstIndex(of: ":") else { return nil }
+        let afterColon = afterKey[afterKey.index(after: colonIndex)...]
+            .drop(while: { $0.isWhitespace || $0.isNewline })
+
+        guard afterColon.first == "\"" else { return nil }
+
+        // Walk forward to find the closing quote (not preceded by backslash)
+        // But we need to handle that the closing " is followed by , or \n or }
+        var result = ""
+        var idx = afterColon.index(after: afterColon.startIndex)
+        var prevWasBackslash = false
+        while idx < afterColon.endIndex {
+            let ch = afterColon[idx]
+            if ch == "\\" && !prevWasBackslash {
+                prevWasBackslash = true
+                idx = afterColon.index(after: idx)
+                continue
+            }
+            if ch == "\"" && !prevWasBackslash {
+                break
+            }
+            if prevWasBackslash {
+                // Interpret escape sequence
+                switch ch {
+                case "n": result.append("\n")
+                case "r": result.append("\r")
+                case "t": result.append("\t")
+                default: result.append(ch)
+                }
+            } else {
+                result.append(ch)
+            }
+            prevWasBackslash = false
+            idx = afterColon.index(after: idx)
+        }
+        return result.isEmpty ? nil : result
+    }
+
+    /// Extracts an array of strings for a given key from a JSON-like string.
+    private func extractJSONArrayOfStrings(key: String, from text: String) -> [String] {
+        guard let keyRange = text.range(of: "\"\(key)\"") else { return [] }
+        let afterKey = text[keyRange.upperBound...]
+        guard let openBracket = afterKey.firstIndex(of: "[") else { return [] }
+        guard let closeBracket = afterKey[openBracket...].firstIndex(of: "]") else { return [] }
+        let arrayContent = String(afterKey[openBracket...closeBracket])
+
+        // Parse the array content with JSONSerialization after fixing newlines
+        let fixed = fixUnescapedNewlines(in: arrayContent)
+        if let data = fixed.data(using: .utf8),
+           let arr = try? JSONSerialization.jsonObject(with: data) as? [String] {
+            return arr
+        }
+        return []
     }
 
     private func stripCodeFences(_ text: String) -> String {
