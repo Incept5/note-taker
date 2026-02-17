@@ -78,6 +78,7 @@ final class SummarizationService: ObservableObject {
         Respond with a JSON object with exactly these keys:
 
         - "summary": A comprehensive narrative overview of the meeting (at least 2-3 paragraphs). \
+        Separate each paragraph with two newlines (\\n\\n). \
         Cover the main topics in the order they were discussed, who contributed what, \
         the overall arc of the conversation, and any context needed to understand the discussion. \
         Do not just list topics — explain what was said about each one.

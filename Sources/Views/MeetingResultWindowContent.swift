@@ -66,13 +66,6 @@ struct MeetingResultWindowContent: View {
     private var summaryPane: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text("Summary")
-                    .font(.title2.bold())
-
-                Text(summary.summary)
-                    .font(.body)
-                    .textSelection(.enabled)
-
                 if !summary.keyPoints.isEmpty {
                     sectionView("Key Points") {
                         ForEach(summary.keyPoints, id: \.self) { point in
@@ -118,9 +111,33 @@ struct MeetingResultWindowContent: View {
                         }
                     }
                 }
+
+                sectionView("Full Summary") {
+                    summaryParagraphs(summary.summary)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(20)
+        }
+    }
+
+    /// Render summary text as separate paragraphs split on double-newlines.
+    @ViewBuilder
+    private func summaryParagraphs(_ text: String) -> some View {
+        let paragraphs = text.components(separatedBy: "\n\n")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        if paragraphs.count > 1 {
+            ForEach(Array(paragraphs.enumerated()), id: \.offset) { _, paragraph in
+                Text(paragraph)
+                    .font(.body)
+                    .textSelection(.enabled)
+            }
+        } else {
+            Text(text)
+                .font(.body)
+                .textSelection(.enabled)
         }
     }
 

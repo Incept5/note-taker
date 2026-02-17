@@ -17,24 +17,26 @@ struct ActionItem: Codable {
 
 extension MeetingSummary {
     var markdownText: String {
-        var text = "## Summary\n\(summary)\n"
+        var text = ""
 
         if !keyPoints.isEmpty {
-            text += "\n## Key Points\n"
+            text += "## Key Points\n"
             for point in keyPoints {
                 text += "- \(point)\n"
             }
         }
 
         if !decisions.isEmpty {
-            text += "\n## Decisions\n"
+            if !text.isEmpty { text += "\n" }
+            text += "## Decisions\n"
             for decision in decisions {
                 text += "- \(decision)\n"
             }
         }
 
         if !actionItems.isEmpty {
-            text += "\n## Action Items\n"
+            if !text.isEmpty { text += "\n" }
+            text += "## Action Items\n"
             for item in actionItems {
                 let owner = item.owner.map { " (@\($0))" } ?? ""
                 text += "- [ ] \(item.task)\(owner)\n"
@@ -42,11 +44,15 @@ extension MeetingSummary {
         }
 
         if !openQuestions.isEmpty {
-            text += "\n## Open Questions\n"
+            if !text.isEmpty { text += "\n" }
+            text += "## Open Questions\n"
             for question in openQuestions {
                 text += "- \(question)\n"
             }
         }
+
+        if !text.isEmpty { text += "\n" }
+        text += "## Summary\n\(summary)\n"
 
         return text
     }

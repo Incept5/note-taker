@@ -166,9 +166,6 @@ struct MeetingDetailView: View {
 
     @ViewBuilder
     private func summaryContent(_ summary: MeetingSummary) -> some View {
-        Text(summary.summary)
-            .font(.callout)
-
         if !summary.keyPoints.isEmpty {
             sectionHeader("Key Points")
             ForEach(summary.keyPoints, id: \.self) { point in
@@ -210,6 +207,9 @@ struct MeetingDetailView: View {
             }
         }
 
+        sectionHeader("Full Summary")
+        summaryParagraphs(summary.summary)
+
         Text("Summarized by \(summary.modelUsed)")
             .font(.caption2)
             .foregroundStyle(.tertiary)
@@ -230,6 +230,25 @@ struct MeetingDetailView: View {
                 .foregroundStyle(.secondary)
             Text(text)
                 .font(.callout)
+        }
+    }
+
+    @ViewBuilder
+    private func summaryParagraphs(_ text: String) -> some View {
+        let paragraphs = text.components(separatedBy: "\n\n")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        if paragraphs.count > 1 {
+            ForEach(Array(paragraphs.enumerated()), id: \.offset) { _, paragraph in
+                Text(paragraph)
+                    .font(.callout)
+                    .textSelection(.enabled)
+            }
+        } else {
+            Text(text)
+                .font(.callout)
+                .textSelection(.enabled)
         }
     }
 
