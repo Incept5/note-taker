@@ -88,11 +88,11 @@ Transcription starts automatically after you stop recording. NoteTaker uses Whis
 
 If an Ollama model is selected and Ollama is running, summarization starts automatically after transcription. The summary includes:
 
-- **Overview** — narrative summary of the meeting
 - **Key Points** — important topics discussed
 - **Decisions** — what was agreed on
 - **Action Items** — tasks with owners where identifiable
 - **Open Questions** — unresolved topics
+- **Full Summary** — detailed narrative overview with paragraph breaks
 
 ### Copying Results
 
@@ -100,7 +100,7 @@ Both the summary (as markdown) and raw transcript have copy buttons. Paste into 
 
 ### Meeting History
 
-All sessions are saved automatically to a local SQLite database. Browse previous meetings from the history view in the popover. Each past session shows its summary and transcript with copy buttons.
+All sessions are saved automatically to a local SQLite database. Click the clock icon in the popover to open the history window — a dedicated resizable window where you can browse past meetings and click to drill into a detail view with side-by-side summary and transcript, each with copy buttons.
 
 ## Architecture
 
@@ -129,7 +129,7 @@ AppState (Phase-driven state machine)
 ### Key Technical Decisions
 
 - **Core Audio Taps** (`AudioHardwareCreateProcessTap`) for driver-free system audio capture — no kernel extensions needed
-- **Separate audio streams** — mic and system audio are captured and transcribed independently, giving "you vs. others" speaker separation
+- **Separate audio streams** — mic and system audio are captured and transcribed independently, then merged into a single chronological transcript sorted by timestamp
 - **WhisperKit** for transcription — MLX-optimized for Apple Silicon, runs entirely on-device
 - **Ollama** for summarization — defaults to localhost:11434, configurable to use a remote server for access to larger models
 - **SQLite over Core Data** — lighter weight, simpler, no ORM overhead

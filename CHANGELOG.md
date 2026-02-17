@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.5
+
+- **Meeting history window** — History now opens in a dedicated resizable window instead of inline in the popover. Browse a scrollable list of past meetings and click to drill into the detail view with side-by-side summary and transcript.
+- **Cleaner transcripts** — Merged system and microphone audio into a single chronological transcript sorted by timestamp. Removed misleading "You"/"Others" speaker labels (Whisper doesn't do speaker diarization). Stripped raw Whisper tokens (`<|startoftranscript|>`, `<|en|>`, timestamps, `<|endoftext|>`) from output.
+- **Improved summary layout** — Key Points, Decisions, Action Items, and Open Questions now appear above the full narrative summary. Summary text is rendered with paragraph breaks instead of a single wall of text.
+- **Fixed result window crash** — Closing the summary window after summarization no longer crashes the app. Applied the same hide-on-close pattern used by the Settings window.
+- **Fixed app launch reliability** — Added a static strong reference to the AppDelegate to prevent ARC from releasing it (NSApplication.delegate is weak).
+
 ## 1.0.4
 
 - **Fixed model download crash** — Downloading WhisperKit models from Settings no longer crashes or freezes the app. Downloads now run in a background thread, with progress shown inline next to the model.
