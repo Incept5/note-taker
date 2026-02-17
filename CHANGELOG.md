@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.6
+
+- **External microphone support** — Select your preferred audio input device in Settings. Supports USB microphones, audio interfaces, and other external input devices.
+- **Device hot-plug detection** — Automatically detects when audio devices are connected or disconnected, updating the device list in real time.
+- **Persistent device selection** — Your chosen microphone is remembered across app restarts. Falls back to the system default if a saved device is no longer available.
+
 ## 1.0.5
 
 - **Meeting history window** — History now opens in a dedicated resizable window instead of inline in the popover. Browse a scrollable list of past meetings and click to drill into the detail view with side-by-side summary and transcript.

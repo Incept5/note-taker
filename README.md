@@ -72,6 +72,10 @@ This lets you run larger models (70B+) on a dedicated machine while keeping Note
 
 ## Usage
 
+### Selecting a Microphone
+
+By default NoteTaker uses your system's default input device. If you have an external USB microphone or audio interface, open **Settings** (gear icon) and choose it from the **Microphone Input** section. Your selection is remembered across restarts, and the device list updates automatically when you plug in or disconnect hardware.
+
 ### Recording a Meeting
 
 1. Click the NoteTaker icon in your menu bar
@@ -112,6 +116,8 @@ AppState (Phase-driven state machine)
     +-- AudioCaptureService
     |     +-- SystemAudioCapture (Core Audio Taps)
     |     +-- MicrophoneCapture (AVAudioEngine)
+    |
+    +-- AudioDeviceManager (input device enumeration)
     |
     +-- TranscriptionService (WhisperKit)
     |
@@ -165,7 +171,8 @@ Or open `NoteTaker.xcodeproj` in Xcode and build from there.
 Sources/
   App/            AppState, AppDelegate (@main entry point)
   Audio/          SystemAudioCapture, MicrophoneCapture, AudioCaptureService,
-                  AudioLevelMonitor, AudioProcessDiscovery, CoreAudioUtils
+                  AudioDeviceManager, AudioLevelMonitor, AudioProcessDiscovery,
+                  CoreAudioUtils
   Transcription/  TranscriptionService, ModelManager, MeetingTranscription
   Summarization/  SummarizationService, OllamaClient, MeetingSummary
   Storage/        DatabaseManager (GRDB), MeetingStore, MeetingRecord
