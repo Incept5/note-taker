@@ -106,19 +106,22 @@ final class TranscriptionService: ObservableObject {
             return nil // continue transcription
         }
 
-        // Extract segments and text from WhisperKit results
+        // Extract segments and text from WhisperKit results, stripping
+        // raw Whisper tokens like <|startoftranscript|>, <|en|>, <|0.00|>, etc.
         var segments: [TranscriptSegment] = []
         var fullText = ""
 
         for result in results {
             for segment in result.segments {
+                let cleaned = Self.stripWhisperTokens(segment.text)
+                if cleaned.isEmpty { continue }
                 segments.append(TranscriptSegment(
-                    text: segment.text,
+                    text: cleaned,
                     startTime: TimeInterval(segment.start),
                     endTime: TimeInterval(segment.end)
                 ))
             }
-            let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            let text = Self.stripWhisperTokens(result.text)
             if !text.isEmpty {
                 if !fullText.isEmpty { fullText += " " }
                 fullText += text
@@ -126,6 +129,20 @@ final class TranscriptionService: ObservableObject {
         }
 
         return TimestampedTranscript(segments: segments, fullText: fullText)
+    }
+
+    /// Remove raw Whisper special tokens from text (e.g. `<|startoftranscript|>`, `<|en|>`, `<|0.00|>`).
+    private static func stripWhisperTokens(_ text: String) -> String {
+        // Match all <|...|> tokens
+        let stripped = text.replacingOccurrences(
+            of: "<\\|[^|]*\\|>",
+            with: "",
+            options: .regularExpression
+        )
+        // Collapse multiple spaces and trim
+        return stripped
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Merge system and mic transcripts into a single chronological text.
