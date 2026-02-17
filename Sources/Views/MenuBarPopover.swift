@@ -10,19 +10,9 @@ struct MenuBarPopover: View {
                     .frame(width: 320)
             } else {
                 VStack(spacing: 0) {
-                    switch appState.navigation {
-                    case .none:
-                        mainContent
-                    case .history:
-                        HistoryView(appState: appState)
-                    case .meetingDetail(let meeting):
-                        MeetingDetailView(appState: appState, meeting: meeting)
-                    }
+                    mainContent
                 }
-                .frame(
-                    width: appState.navigation.isMeetingDetail ? 640 : 320,
-                    height: appState.navigation.isMeetingDetail ? 500 : nil
-                )
+                .frame(width: 320)
             }
         }
     }
@@ -35,10 +25,7 @@ struct MenuBarPopover: View {
                     .font(.headline)
                 Spacer()
 
-                Button(action: {
-                    appState.meetingStore.loadRecentMeetings()
-                    appState.navigation = .history
-                }) {
+                Button(action: { appState.onOpenHistory?() }) {
                     Image(systemName: "clock")
                         .foregroundStyle(.secondary)
                 }

@@ -84,6 +84,9 @@ final class AppState: ObservableObject {
     /// Callback for opening the settings window (set by AppDelegate).
     var onOpenSettings: (() -> Void)?
 
+    /// Callback for opening the history window (set by AppDelegate).
+    var onOpenHistory: (() -> Void)?
+
     private var currentMeetingId: String?
 
     init() {

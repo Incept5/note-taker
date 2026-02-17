@@ -10,11 +10,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let appState = AppState()
     private let resultWindowController = ResultWindowController()
     private lazy var settingsWindowController = SettingsWindowController(appState: appState)
+    private lazy var historyWindowController = HistoryWindowController(appState: appState)
     private var cancellables = Set<AnyCancellable>()
+
+    /// Strong reference to prevent ARC from releasing the delegate
+    /// (NSApplication.delegate is weak).
+    private static var strongDelegate: AppDelegate?
 
     static func main() {
         let app = NSApplication.shared
         let delegate = AppDelegate()
+        strongDelegate = delegate
         app.delegate = delegate
         app.run()
     }
@@ -70,6 +76,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // the app, which can prevent the new window from appearing in front.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 self.settingsWindowController.show()
+            }
+        }
+
+        // Open history in a proper window
+        appState.onOpenHistory = { [weak self] in
+            guard let self else { return }
+            self.popover?.performClose(nil)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                self.historyWindowController.show()
             }
         }
 
