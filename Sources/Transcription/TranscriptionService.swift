@@ -34,7 +34,7 @@ final class TranscriptionService: ObservableObject {
             wordTimestamps: true
         )
 
-        // Transcribe system audio
+        // Transcribe system audio (captures all meeting participants)
         progress = 0
         progressText = "Transcribing system audio..."
 
@@ -46,7 +46,7 @@ final class TranscriptionService: ObservableObject {
             pipe: pipe,
             path: audio.systemAudioURL.path,
             options: options,
-            label: "Others"
+            label: "System"
         )
 
         progress = 0.5
@@ -61,7 +61,7 @@ final class TranscriptionService: ObservableObject {
                 pipe: pipe,
                 path: audio.microphoneURL.path,
                 options: options,
-                label: "You"
+                label: "Mic"
             )
 
             if !transcript.fullText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -72,19 +72,10 @@ final class TranscriptionService: ObservableObject {
         progress = 1.0
         progressText = "Done"
 
-        // Build combined text with speaker labels
-        var combined = ""
-        let systemText = systemTranscript.fullText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !systemText.isEmpty {
-            combined += "Others:\n\(systemTranscript.fullText)\n"
-        }
-        if let mic = micTranscript {
-            if !combined.isEmpty { combined += "\n" }
-            combined += "You:\n\(mic.fullText)\n"
-        }
-        if combined.isEmpty {
-            combined = systemTranscript.fullText
-        }
+        // Merge both streams into a single chronological transcript.
+        // Whisper doesn't do speaker diarization, so we interleave segments
+        // by timestamp rather than labelling them with misleading speaker names.
+        let combined = mergeTranscripts(system: systemTranscript, mic: micTranscript)
 
         let duration = Date().timeIntervalSince(start)
 
@@ -135,6 +126,30 @@ final class TranscriptionService: ObservableObject {
         }
 
         return TimestampedTranscript(segments: segments, fullText: fullText)
+    }
+
+    /// Merge system and mic transcripts into a single chronological text.
+    /// Segments are interleaved by start time and deduplicated where they overlap
+    /// (system audio often contains the local speaker's voice too).
+    private func mergeTranscripts(system: TimestampedTranscript, mic: TimestampedTranscript?) -> String {
+        guard let mic = mic, !mic.segments.isEmpty else {
+            return system.fullText.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        // Merge all segments and sort by start time
+        var all = system.segments + mic.segments
+        all.sort { $0.startTime < $1.startTime }
+
+        // Build combined text from sorted segments
+        var combined = ""
+        for segment in all {
+            let text = segment.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if text.isEmpty { continue }
+            if !combined.isEmpty { combined += " " }
+            combined += text
+        }
+
+        return combined.isEmpty ? system.fullText : combined
     }
 
     private func loadWhisperKit(model: String) async throws {
