@@ -22,6 +22,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             modelManager: appState.modelManager,
             appState: appState,
             audioDeviceManager: appState.audioDeviceManager,
+            mlxModelManager: appState.mlxModelManager,
             onDismiss: { [weak self] in
                 self?.hide()
             },

@@ -18,6 +18,9 @@ packages:
   GRDB:
     url: https://github.com/groue/GRDB.swift.git
     from: "7.0.0"
+  MLXSwiftLM:
+    url: https://github.com/ml-explore/mlx-swift-lm.git
+    from: "2.0.0"
 
 schemes:
   NoteTaker:
@@ -41,6 +44,8 @@ targets:
     dependencies:
       - package: WhisperKit
       - package: GRDB
+      - package: MLXSwiftLM
+        product: MLXLLM
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.incept5.NoteTaker

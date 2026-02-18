@@ -6,6 +6,9 @@ enum SummarizationError: LocalizedError {
     case noModelSelected
     case requestFailed(Error)
     case invalidResponse
+    case mlxModelNotDownloaded
+    case mlxModelNotSelected
+    case mlxLoadFailed(Error)
 
     var errorDescription: String? {
         switch self {
@@ -19,6 +22,12 @@ enum SummarizationError: LocalizedError {
             return "Summarization request failed: \(error.localizedDescription)"
         case .invalidResponse:
             return "Received an invalid response from Ollama."
+        case .mlxModelNotDownloaded:
+            return "Download a summarization model in Settings."
+        case .mlxModelNotSelected:
+            return "Select a summarization model in Settings."
+        case .mlxLoadFailed(let error):
+            return "Failed to load the MLX model: \(error.localizedDescription)"
         }
     }
 }

@@ -1,5 +1,10 @@
 import Foundation
 
+enum SummarizationBackend: String {
+    case mlx
+    case ollama
+}
+
 @MainActor
 final class SummarizationService: ObservableObject {
     @Published var progress: Double = 0
@@ -7,6 +12,10 @@ final class SummarizationService: ObservableObject {
 
     private(set) var ollamaClient: OllamaClient
     var selectedModel: String?
+
+    let mlxClient = MLXClient()
+    var backend: SummarizationBackend = .mlx
+    var selectedMLXModelId: String?
 
     init(ollamaBaseURL: String = OllamaClient.defaultBaseURL) {
         ollamaClient = OllamaClient(baseURL: ollamaBaseURL)
@@ -17,6 +26,15 @@ final class SummarizationService: ObservableObject {
     }
 
     func summarize(transcript: String, appName: String?, duration: TimeInterval) async throws -> MeetingSummary {
+        switch backend {
+        case .ollama:
+            return try await summarizeWithOllama(transcript: transcript, appName: appName, duration: duration)
+        case .mlx:
+            return try await summarizeWithMLX(transcript: transcript, appName: appName, duration: duration)
+        }
+    }
+
+    private func summarizeWithOllama(transcript: String, appName: String?, duration: TimeInterval) async throws -> MeetingSummary {
         let start = Date()
 
         guard let model = selectedModel else {
@@ -52,6 +70,47 @@ final class SummarizationService: ObservableObject {
 
         let processingDuration = Date().timeIntervalSince(start)
         let summary = parseSummary(response: response, model: model, duration: processingDuration)
+
+        progress = 1.0
+        progressText = "Done"
+
+        return summary
+    }
+
+    private func summarizeWithMLX(transcript: String, appName: String?, duration: TimeInterval) async throws -> MeetingSummary {
+        let start = Date()
+
+        guard let modelId = selectedMLXModelId else {
+            throw SummarizationError.mlxModelNotSelected
+        }
+
+        progress = 0.1
+        progressText = "Loading MLX model..."
+
+        do {
+            try await mlxClient.ensureModelLoaded(id: modelId)
+        } catch {
+            throw SummarizationError.mlxLoadFailed(error)
+        }
+
+        progress = 0.2
+        progressText = "Summarizing with MLX..."
+
+        let systemPrompt = buildSystemPrompt(appName: appName, duration: duration)
+
+        let response: String
+        do {
+            response = try await mlxClient.chat(systemPrompt: systemPrompt, userMessage: transcript)
+        } catch {
+            throw SummarizationError.requestFailed(error)
+        }
+
+        progress = 0.9
+        progressText = "Parsing summary..."
+
+        let displayName = modelId.components(separatedBy: "/").last ?? modelId
+        let processingDuration = Date().timeIntervalSince(start)
+        let summary = parseSummary(response: response, model: displayName, duration: processingDuration)
 
         progress = 1.0
         progressText = "Done"
@@ -123,9 +182,14 @@ final class SummarizationService: ObservableObject {
             }
         }
 
-        // Last resort: try regex extraction of individual JSON fields
+        // Try regex extraction of individual JSON fields (quoted values)
         if let regexSummary = extractRegexSummary(from: response, model: model, duration: duration) {
             return regexSummary
+        }
+
+        // Try loose-format extraction for models that return "key":\n bullet lists
+        if let looseSummary = extractLooseFormatSummary(from: response, model: model, duration: duration) {
+            return looseSummary
         }
 
         // Fallback: treat entire response as summary text
@@ -307,6 +371,135 @@ final class SummarizationService: ObservableObject {
         return []
     }
 
+    /// Handles model output in loose key-value format, e.g.:
+    ///   "summary":
+    ///   Some unquoted paragraph text...
+    ///
+    ///   "keyPoints":
+    ///   * First point
+    ///   * Second point
+    ///
+    /// Splits the response at known JSON key markers and extracts text blocks.
+    private func extractLooseFormatSummary(from response: String, model: String, duration: TimeInterval) -> MeetingSummary? {
+        let knownKeys = ["summary", "keyPoints", "decisions", "actionItems", "openQuestions"]
+
+        // Check that the response contains at least "summary" as a key marker
+        guard response.contains("\"summary\"") else { return nil }
+
+        // Build a map of key -> text content between keys
+        var sections: [String: String] = [:]
+        for (i, key) in knownKeys.enumerated() {
+            guard let keyRange = response.range(of: "\"\(key)\"") else { continue }
+            let afterKey = response[keyRange.upperBound...]
+
+            // Skip optional colon and whitespace
+            let content: Substring
+            if let colonIdx = afterKey.firstIndex(of: ":") {
+                content = afterKey[afterKey.index(after: colonIdx)...]
+            } else {
+                content = afterKey
+            }
+
+            // Find where the next key starts (or end of string)
+            var endIndex = content.endIndex
+            for nextKey in knownKeys[(i + 1)...] {
+                if let nextRange = content.range(of: "\"\(nextKey)\"") {
+                    endIndex = nextRange.lowerBound
+                    break
+                }
+            }
+
+            let sectionText = String(content[content.startIndex..<endIndex])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !sectionText.isEmpty {
+                sections[key] = sectionText
+            }
+        }
+
+        guard let summaryText = sections["summary"], !summaryText.isEmpty else { return nil }
+
+        // Strip leading/trailing quotes if the model wrapped the value in them
+        let cleanSummary = summaryText.trimmingQuotes()
+
+        return MeetingSummary(
+            summary: cleanSummary,
+            keyPoints: extractBulletItems(from: sections["keyPoints"]),
+            decisions: extractBulletItems(from: sections["decisions"]),
+            actionItems: extractLooseActionItems(from: sections["actionItems"]),
+            openQuestions: extractBulletItems(from: sections["openQuestions"]),
+            modelUsed: model,
+            processingDuration: duration
+        )
+    }
+
+    /// Extracts bullet items from text using *, -, or numbered list prefixes.
+    private func extractBulletItems(from text: String?) -> [String] {
+        guard let text, !text.isEmpty else { return [] }
+        return text
+            .components(separatedBy: "\n")
+            .map { line in
+                var s = line.trimmingCharacters(in: .whitespaces)
+                // Strip bullet prefixes: *, -, •, or "1." / "1)"
+                if s.hasPrefix("* ") { s = String(s.dropFirst(2)) }
+                else if s.hasPrefix("- ") { s = String(s.dropFirst(2)) }
+                else if s.hasPrefix("• ") { s = String(s.dropFirst(2)) }
+                else if let dotRange = s.range(of: #"^\d+[\.\)]\s*"#, options: .regularExpression) {
+                    s = String(s[dotRange.upperBound...])
+                }
+                return s.trimmingCharacters(in: .whitespaces)
+                    .trimmingQuotes()
+            }
+            .filter { !$0.isEmpty }
+    }
+
+    /// Extract action items from loose text like "Task: ...\nOwner: ..."
+    private func extractLooseActionItems(from text: String?) -> [ActionItem] {
+        guard let text, !text.isEmpty else { return [] }
+
+        // Try to find "Task:" / "Owner:" pairs
+        let lines = text.components(separatedBy: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+
+        var items: [ActionItem] = []
+        var currentTask: String?
+        var currentOwner: String?
+
+        for line in lines {
+            let stripped = line
+                .replacingOccurrences(of: #"^[\*\-•]\s*"#, with: "", options: .regularExpression)
+                .trimmingCharacters(in: .whitespaces)
+
+            if stripped.lowercased().hasPrefix("task:") {
+                // Flush previous
+                if let task = currentTask {
+                    items.append(ActionItem(task: task, owner: cleanOwner(currentOwner)))
+                }
+                currentTask = String(stripped.dropFirst(5)).trimmingCharacters(in: .whitespaces)
+                currentOwner = nil
+            } else if stripped.lowercased().hasPrefix("owner:") {
+                currentOwner = String(stripped.dropFirst(6)).trimmingCharacters(in: .whitespaces)
+            } else if !stripped.isEmpty, currentTask == nil {
+                // Treat as a standalone task line
+                items.append(ActionItem(task: stripped.trimmingQuotes(), owner: nil))
+            }
+        }
+        // Flush last
+        if let task = currentTask {
+            items.append(ActionItem(task: task, owner: cleanOwner(currentOwner)))
+        }
+
+        return items
+    }
+
+    private func cleanOwner(_ owner: String?) -> String? {
+        guard let owner, !owner.isEmpty,
+              owner.lowercased() != "null",
+              owner.lowercased() != "none",
+              owner.lowercased() != "n/a" else { return nil }
+        return owner
+    }
+
     private func stripCodeFences(_ text: String) -> String {
         var result = text.trimmingCharacters(in: .whitespacesAndNewlines)
         // Remove ```json ... ``` or ``` ... ```
@@ -320,5 +513,15 @@ final class SummarizationService: ObservableObject {
             result = result.trimmingCharacters(in: .whitespacesAndNewlines)
         }
         return result
+    }
+}
+
+private extension String {
+    /// Strip matching leading/trailing double quotes from a string value.
+    func trimmingQuotes() -> String {
+        if hasPrefix("\"") && hasSuffix("\"") && count > 1 {
+            return String(dropFirst().dropLast())
+        }
+        return self
     }
 }

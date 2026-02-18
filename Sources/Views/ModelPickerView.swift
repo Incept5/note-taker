@@ -4,6 +4,7 @@ struct ModelPickerView: View {
     @ObservedObject var modelManager: ModelManager
     @ObservedObject var appState: AppState
     @ObservedObject var audioDeviceManager: AudioDeviceManager
+    @ObservedObject var mlxModelManager: MLXModelManager
     let onDismiss: () -> Void
     var onModelReady: (() -> Void)? = nil
 
@@ -15,12 +16,17 @@ struct ModelPickerView: View {
     @State private var downloadProgress: Double = 0
     @State private var downloadError: String?
 
+    // MLX download state (local @State to avoid layout recursion)
+    @State private var mlxDownloadingId: String?
+    @State private var mlxDownloadProgress: Double = 0
+    @State private var mlxDownloadError: String?
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 audioInputSection
                 Divider()
-                ollamaSection
+                summarizationSection
                 Divider()
                 whisperSection
             }
@@ -28,7 +34,9 @@ struct ModelPickerView: View {
         }
         .task {
             editingURL = appState.ollamaServerURL
-            await loadOllamaModels()
+            if appState.summarizationBackend == "ollama" {
+                await loadOllamaModels()
+            }
         }
     }
 
@@ -119,14 +127,112 @@ struct ModelPickerView: View {
         )
     }
 
-    // MARK: - Ollama Section
+    // MARK: - Summarization Section
 
     @ViewBuilder
-    private var ollamaSection: some View {
+    private var summarizationSection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Label("Summarization (Ollama)", systemImage: "brain")
+            Label("Summarization", systemImage: "brain")
                 .font(.title3.bold())
 
+            Picker("Engine", selection: $appState.summarizationBackend) {
+                Text("Built-in (MLX)").tag("mlx")
+                Text("Ollama").tag("ollama")
+            }
+            .pickerStyle(.segmented)
+
+            if appState.summarizationBackend == "mlx" {
+                mlxModelSection
+            } else {
+                ollamaModelSection
+            }
+        }
+    }
+
+    // MARK: - MLX Model Section
+
+    @ViewBuilder
+    private var mlxModelSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(mlxModelManager.models) { model in
+                mlxModelRow(model)
+            }
+
+            if let error = mlxDownloadError {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func mlxModelRow(_ model: MLXModel) -> some View {
+        let isSelected = appState.selectedMLXModel == model.id
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(model.displayName)
+                        .font(.body.bold())
+                    if isSelected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                            .font(.caption)
+                    }
+                }
+                Text(model.description)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("\(model.sizeLabel) · \(model.ramRequired)")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+
+            Spacer()
+
+            if model.isDownloaded {
+                if isSelected {
+                    Text("Selected")
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                } else {
+                    Button("Select") {
+                        appState.selectedMLXModel = model.id
+                        mlxModelManager.selectModel(model.id)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+            } else if mlxDownloadingId == model.id {
+                VStack(spacing: 2) {
+                    ProgressView(value: mlxDownloadProgress)
+                        .frame(width: 80)
+                    Text("\(Int(mlxDownloadProgress * 100))%")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                Button("Download") {
+                    startMLXDownload(model.id)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(mlxDownloadingId != nil)
+            }
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .background(
+            isSelected ? Color.purple.opacity(0.08) : Color.secondary.opacity(0.04),
+            in: RoundedRectangle(cornerRadius: 8)
+        )
+    }
+
+    // MARK: - Ollama Model Section
+
+    @ViewBuilder
+    private var ollamaModelSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
             // Server URL
             serverURLField
 
@@ -140,6 +246,7 @@ struct ModelPickerView: View {
                         .foregroundStyle(.secondary)
                 }
                 .padding(.vertical, 4)
+                .task { await loadOllamaModels() }
             } else if !ollamaAvailable {
                 VStack(alignment: .leading, spacing: 8) {
                     Label("Cannot connect to Ollama", systemImage: "exclamationmark.triangle.fill")
@@ -382,7 +489,7 @@ struct ModelPickerView: View {
         )
     }
 
-    // MARK: - Download
+    // MARK: - WhisperKit Download
 
     private func startDownload(_ modelId: String) {
         downloadError = nil
@@ -407,6 +514,37 @@ struct ModelPickerView: View {
                     if success {
                         DispatchQueue.main.async {
                             modelManager.markModelDownloaded(modelId)
+                        }
+                    }
+                }
+            }
+        )
+    }
+
+    // MARK: - MLX Download
+
+    private func startMLXDownload(_ modelId: String) {
+        mlxDownloadError = nil
+        mlxDownloadingId = modelId
+        mlxDownloadProgress = 0
+        mlxModelManager.downloadModelDetached(
+            modelId,
+            onProgress: { fraction in
+                DispatchQueue.main.async {
+                    mlxDownloadProgress = fraction
+                }
+            },
+            onComplete: { success in
+                DispatchQueue.main.async {
+                    mlxDownloadingId = nil
+                    if !success {
+                        mlxDownloadError = "Download failed. Please try again."
+                    }
+                    // Defer @Published update to next runloop cycle
+                    if success {
+                        DispatchQueue.main.async {
+                            mlxModelManager.markModelDownloaded(modelId)
+                            appState.selectedMLXModel = modelId
                         }
                     }
                 }

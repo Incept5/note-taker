@@ -55,6 +55,22 @@ final class AppState: ObservableObject {
     @Published var showingModelPicker = false
     @Published var navigation: NavigationDestination = .none
 
+    @Published var summarizationBackend: String {
+        didSet {
+            UserDefaults.standard.set(summarizationBackend, forKey: "summarizationBackend")
+        }
+    }
+
+    @Published var selectedMLXModel: String? {
+        didSet {
+            if let model = selectedMLXModel {
+                UserDefaults.standard.set(model, forKey: "selectedMLXModel")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "selectedMLXModel")
+            }
+        }
+    }
+
     @Published var selectedOllamaModel: String? {
         didSet {
             if let model = selectedOllamaModel {
@@ -75,6 +91,7 @@ final class AppState: ObservableObject {
     let captureService = AudioCaptureService()
     let audioDeviceManager = AudioDeviceManager()
     let modelManager: ModelManager
+    let mlxModelManager: MLXModelManager
     let transcriptionService: TranscriptionService
     let summarizationService: SummarizationService
     let meetingStore: MeetingStore
@@ -93,6 +110,7 @@ final class AppState: ObservableObject {
     init() {
         let mm = ModelManager()
         modelManager = mm
+        mlxModelManager = MLXModelManager()
         transcriptionService = TranscriptionService(modelManager: mm)
         meetingStore = MeetingStore()
 
@@ -101,13 +119,15 @@ final class AppState: ObservableObject {
         ollamaServerURL = savedURL
         summarizationService = SummarizationService(ollamaBaseURL: savedURL)
 
+        // Restore persisted settings
+        summarizationBackend = UserDefaults.standard.string(forKey: "summarizationBackend") ?? "mlx"
+        selectedMLXModel = UserDefaults.standard.string(forKey: "selectedMLXModel")
+        selectedOllamaModel = UserDefaults.standard.string(forKey: "selectedOllamaModel")
+
         // Show onboarding if never completed
         if !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding") {
             showingOnboarding = true
         }
-
-        // Restore persisted settings
-        selectedOllamaModel = UserDefaults.standard.string(forKey: "selectedOllamaModel")
 
         // Ensure a valid WhisperKit model is always selected
         let knownIds = mm.models.map(\.id)
@@ -175,11 +195,17 @@ final class AppState: ObservableObject {
                     try? meetingStore.updateWithTranscription(id: id, transcription: result)
                 }
 
-                // Auto-start summarization if an Ollama model is selected and available
-                if selectedOllamaModel != nil {
-                    let available = await summarizationService.ollamaClient.checkAvailability()
-                    if available {
+                // Auto-start summarization if a model is selected and available
+                if summarizationBackend == "mlx" {
+                    if let modelId = selectedMLXModel, mlxModelManager.modelIsDownloaded(modelId) {
                         startSummarization(audio: audio, transcription: result)
+                    }
+                } else {
+                    if selectedOllamaModel != nil {
+                        let available = await summarizationService.ollamaClient.checkAvailability()
+                        if available {
+                            startSummarization(audio: audio, transcription: result)
+                        }
                     }
                 }
             } catch {
@@ -194,13 +220,23 @@ final class AppState: ObservableObject {
     }
 
     func startSummarization(audio: CapturedAudio, transcription: MeetingTranscription) {
-        guard let model = selectedOllamaModel else {
-            phase = .error(SummarizationError.noModelSelected.localizedDescription)
-            return
+        if summarizationBackend == "mlx" {
+            guard let modelId = selectedMLXModel else {
+                phase = .error(SummarizationError.mlxModelNotSelected.localizedDescription)
+                return
+            }
+            summarizationService.backend = .mlx
+            summarizationService.selectedMLXModelId = modelId
+        } else {
+            guard let model = selectedOllamaModel else {
+                phase = .error(SummarizationError.noModelSelected.localizedDescription)
+                return
+            }
+            summarizationService.backend = .ollama
+            summarizationService.selectedModel = model
         }
 
         phase = .summarizing(audio, transcription)
-        summarizationService.selectedModel = model
 
         Task {
             do {
