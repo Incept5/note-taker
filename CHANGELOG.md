@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.1
+
+- **Fixed MLX summary formatting** — Summaries from the MLX backend no longer contain raw JSON artifacts (bracket characters, literal `\n\n` strings, or raw `{"task": ..., "owner": ...}` fragments). Added post-processing cleanup across all parsing paths.
+
 ## 1.1.0
 
 - **MLX local summarization** — Summarize meetings using local MLX models directly, removing the need to install and run an Ollama server. MLX is now the default backend.
