@@ -1,6 +1,6 @@
 # NoteTaker
 
-Privacy-first meeting transcription and summarization for macOS. Capture meeting audio, transcribe it with WhisperKit, and generate structured summaries with a local LLM via Ollama. No data ever leaves your machine.
+Privacy-first meeting transcription and summarization for macOS. Capture meeting audio, transcribe it with WhisperKit, and generate structured summaries with a local LLM. No data ever leaves your machine.
 
 Think [Granola](https://www.granola.so/), but fully local. The privacy guarantee is architectural, not contractual.
 
@@ -11,7 +11,7 @@ NoteTaker lives in your menu bar. Click to start recording — it captures your 
 ```
 Record (mic + system audio)
     -> Transcribe locally (WhisperKit)
-        -> Summarize locally (Ollama)
+        -> Summarize locally (MLX or Ollama)
             -> Browse & copy results
 ```
 
@@ -20,7 +20,6 @@ Record (mic + system audio)
 - **macOS 14.2+** (Sonoma) — required for Core Audio Taps
 - **Apple Silicon** (M1 minimum, M2 Pro+ recommended)
 - **16 GB RAM** minimum (32 GB recommended for larger LLM models)
-- **[Ollama](https://ollama.com/)** installed with at least one model downloaded
 
 ## Installation
 
@@ -39,34 +38,36 @@ macOS will ask for two permissions:
 
 Grant both, then restart NoteTaker if prompted.
 
-### Setting Up Ollama
+### Summarization Setup
 
-NoteTaker uses [Ollama](https://ollama.com/) for local summarization. Install it and pull a model:
+NoteTaker supports two backends for local summarization:
+
+#### MLX (Default — No Setup Required)
+
+MLX runs models directly on Apple Silicon with no external dependencies. On first use, open **Settings** and download an MLX model — everything is managed within the app. No terminal commands, no servers to run.
+
+#### Ollama (Alternative)
+
+If you prefer [Ollama](https://ollama.com/), switch the backend to Ollama in Settings, then install and start the server:
 
 ```bash
-# Install Ollama
 brew install ollama
-
-# Start the Ollama server
 ollama serve
 
 # Pull a model (in a separate terminal)
 ollama pull qwen3-vl           # Recommended — excellent summarization quality
-# or
-ollama pull llama3.1:8b        # Good alternative, fast
-# or
-ollama pull llama3.1:70b       # Best quality, needs 48GB+ RAM
 ```
 
 Ollama must be running (`ollama serve`) whenever you want to generate summaries. Transcription works without it.
 
-### Using a Remote Ollama Server
+#### Using a Remote Ollama Server
 
-By default NoteTaker connects to Ollama on `http://localhost:11434`. If you have a more powerful machine running Ollama on your network (e.g. a Mac Mini or Studio with more RAM for larger models), you can point NoteTaker at it:
+If you have a more powerful machine running Ollama on your network (e.g. a Mac Mini or Studio with more RAM for larger models), you can point NoteTaker at it:
 
 1. Open **Settings** (gear icon in the menu bar popover)
-2. Change the **Server URL** under Summarization to your remote machine's address (e.g. `http://192.168.1.50:11434`)
-3. Click **Connect** — NoteTaker will check availability and list the models on that server
+2. Switch the summarization backend to **Ollama**
+3. Change the **Server URL** to your remote machine's address (e.g. `http://192.168.1.50:11434`)
+4. Click **Connect** — NoteTaker will check availability and list the models on that server
 
 This lets you run larger models (70B+) on a dedicated machine while keeping NoteTaker lightweight on your laptop. Audio capture and transcription still run locally — only the summarization request is sent to the remote Ollama server.
 
@@ -90,7 +91,7 @@ Transcription starts automatically after you stop recording. NoteTaker uses Whis
 
 ### Summarization
 
-If an Ollama model is selected and Ollama is running, summarization starts automatically after transcription. The summary includes:
+If a summarization model is selected and available, summarization starts automatically after transcription. The summary includes:
 
 - **Key Points** — important topics discussed
 - **Decisions** — what was agreed on
@@ -121,7 +122,7 @@ AppState (Phase-driven state machine)
     |
     +-- TranscriptionService (WhisperKit)
     |
-    +-- SummarizationService (Ollama HTTP API)
+    +-- SummarizationService (MLX or Ollama)
     |
     +-- MeetingStore (SQLite via GRDB)
 ```
@@ -137,7 +138,7 @@ AppState (Phase-driven state machine)
 - **Core Audio Taps** (`AudioHardwareCreateProcessTap`) for driver-free system audio capture — no kernel extensions needed
 - **Separate audio streams** — mic and system audio are captured and transcribed independently, then merged into a single chronological transcript sorted by timestamp
 - **WhisperKit** for transcription — MLX-optimized for Apple Silicon, runs entirely on-device
-- **Ollama** for summarization — defaults to localhost:11434, configurable to use a remote server for access to larger models
+- **MLX** for summarization (default) — runs local LLMs directly on Apple Silicon with no external dependencies. Ollama also supported as an alternative, configurable to use a remote server for access to larger models
 - **SQLite over Core Data** — lighter weight, simpler, no ORM overhead
 - **Structured summary output** — Ollama is prompted to return JSON with distinct fields, not unstructured text
 - **No sandbox** — required for Core Audio Taps to function
@@ -174,7 +175,8 @@ Sources/
                   AudioDeviceManager, AudioLevelMonitor, AudioProcessDiscovery,
                   CoreAudioUtils
   Transcription/  TranscriptionService, ModelManager, MeetingTranscription
-  Summarization/  SummarizationService, OllamaClient, MeetingSummary
+  Summarization/  SummarizationService, MLXClient, MLXModelManager,
+                  OllamaClient, MeetingSummary
   Storage/        DatabaseManager (GRDB), MeetingStore, MeetingRecord
   Models/         AudioProcess, CapturedAudio
   Views/          All SwiftUI views (popover, recording, transcription,
@@ -188,9 +190,10 @@ Assets.xcassets/  App icon
 | Package | Version | Purpose |
 |---|---|---|
 | [WhisperKit](https://github.com/argmaxinc/WhisperKit) | 0.15.0+ | Local speech-to-text (MLX-optimized) |
+| [mlx-swift-lm](https://github.com/ml-explore/mlx-swift-lm) | 2.0.0+ | Local LLM inference on Apple Silicon |
 | [GRDB.swift](https://github.com/groue/GRDB.swift) | 7.0.0+ | SQLite database wrapper |
 
-Ollama is an external runtime dependency, not a Swift package. It communicates via HTTP (default `localhost:11434`, configurable to a remote server).
+Ollama is an optional external runtime dependency (not a Swift package) for users who prefer it over MLX. It communicates via HTTP (default `localhost:11434`, configurable to a remote server).
 
 ### Building a Release (Signed DMG)
 
@@ -225,7 +228,7 @@ The signed and notarized DMG is written to `build/release/NoteTaker-{version}.dm
 
 ## Privacy
 
-NoteTaker makes **zero network calls** for audio capture and transcription — WhisperKit runs entirely on-device. Summarization calls Ollama, which defaults to localhost. If you configure a remote Ollama server, the transcript text is sent to that server for summarization — but this is a machine you control on your own network, not a third-party cloud service. Audio files, transcripts, and summaries are stored locally in `~/Library/Application Support/NoteTaker/`. No telemetry, no analytics, no cloud sync.
+NoteTaker makes **zero network calls** for audio capture, transcription, and summarization (when using MLX) — everything runs entirely on-device. If you use Ollama on a remote server, the transcript text is sent to that server for summarization — but this is a machine you control on your own network, not a third-party cloud service. Audio files, transcripts, and summaries are stored locally in `~/Library/Application Support/NoteTaker/`. No telemetry, no analytics, no cloud sync.
 
 ## License
 

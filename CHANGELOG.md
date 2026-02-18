@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.0
+
+- **MLX local summarization** — Summarize meetings using local MLX models directly, removing the need to install and run an Ollama server. MLX is now the default backend.
+- **In-app model management** — Browse, download, and manage MLX models from the Settings panel. No terminal commands needed.
+- **Backend selector** — Choose between MLX (default) and Ollama in Settings. Ollama remains available for users who prefer it or want to use a remote server.
+- **Summary attribution** — The summary view now shows which backend (MLX or Ollama) produced the result.
+
 ## 1.0.6
 
 - **External microphone support** — Select your preferred audio input device in Settings. Supports USB microphones, audio interfaces, and other external input devices.
