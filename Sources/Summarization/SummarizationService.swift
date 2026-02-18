@@ -170,7 +170,7 @@ final class SummarizationService: ObservableObject {
             if let data = candidate.data(using: .utf8),
                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                json["summary"] is String {
-                return MeetingSummary(
+                return cleanSummary(MeetingSummary(
                     summary: json["summary"] as? String ?? response,
                     keyPoints: json["keyPoints"] as? [String] ?? [],
                     decisions: json["decisions"] as? [String] ?? [],
@@ -178,22 +178,22 @@ final class SummarizationService: ObservableObject {
                     openQuestions: json["openQuestions"] as? [String] ?? [],
                     modelUsed: model,
                     processingDuration: duration
-                )
+                ))
             }
         }
 
         // Try regex extraction of individual JSON fields (quoted values)
         if let regexSummary = extractRegexSummary(from: response, model: model, duration: duration) {
-            return regexSummary
+            return cleanSummary(regexSummary)
         }
 
         // Try loose-format extraction for models that return "key":\n bullet lists
         if let looseSummary = extractLooseFormatSummary(from: response, model: model, duration: duration) {
-            return looseSummary
+            return cleanSummary(looseSummary)
         }
 
         // Fallback: treat entire response as summary text
-        return MeetingSummary(
+        return cleanSummary(MeetingSummary(
             summary: response,
             keyPoints: [],
             decisions: [],
@@ -201,7 +201,87 @@ final class SummarizationService: ObservableObject {
             openQuestions: [],
             modelUsed: model,
             processingDuration: duration
+        ))
+    }
+
+    /// Cleans JSON artifacts from parsed summary fields — brackets, literal \n\n, raw JSON fragments.
+    private func cleanSummary(_ summary: MeetingSummary) -> MeetingSummary {
+        MeetingSummary(
+            summary: cleanSummaryText(summary.summary),
+            keyPoints: cleanStringArray(summary.keyPoints),
+            decisions: cleanStringArray(summary.decisions),
+            actionItems: cleanActionItems(summary.actionItems),
+            openQuestions: cleanStringArray(summary.openQuestions),
+            modelUsed: summary.modelUsed,
+            processingDuration: summary.processingDuration
         )
+    }
+
+    /// Cleans the narrative summary text of literal escape sequences and JSON artifacts.
+    private func cleanSummaryText(_ text: String) -> String {
+        var result = text
+        // Replace literal \n with actual newlines (when the model outputs backslash-n as text)
+        result = result.replacingOccurrences(of: "\\n\\n", with: "\n\n")
+        result = result.replacingOccurrences(of: "\\n", with: "\n")
+        result = result.replacingOccurrences(of: "\\t", with: " ")
+        // Remove stray JSON brackets at start/end
+        result = result.trimmingCharacters(in: .whitespacesAndNewlines)
+        if result.hasPrefix("[") && !result.hasPrefix("[!") { result = String(result.dropFirst()) }
+        if result.hasSuffix("]") { result = String(result.dropLast()) }
+        return result.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Filters out JSON artifact items and cleans remaining items.
+    private func cleanStringArray(_ items: [String]) -> [String] {
+        items.compactMap { item -> String? in
+            let trimmed = item.trimmingCharacters(in: .whitespacesAndNewlines)
+            // Filter out items that are just JSON syntax or escape sequences
+            let junkPatterns: Set<String> = ["[", "]", "{", "}", ",", "\\n", "\\n\\n", "\\r", "\\t", ""]
+            if junkPatterns.contains(trimmed) { return nil }
+            // Filter items that are just whitespace or punctuation
+            if trimmed.allSatisfy({ "[]{}(),\\\"'\n\r\t ".contains($0) }) { return nil }
+            // Filter raw JSON key-value fragments like `"task": "..."` or `owner": "...`
+            if trimmed.range(of: #"^"?(task|owner)"?\s*:"#, options: .regularExpression) != nil { return nil }
+            // Clean literal escape sequences within the item text
+            var cleaned = trimmed
+            cleaned = cleaned.replacingOccurrences(of: "\\n", with: " ")
+            cleaned = cleaned.replacingOccurrences(of: "\\t", with: " ")
+            // Remove wrapping quotes
+            if cleaned.hasPrefix("\"") && cleaned.hasSuffix("\"") && cleaned.count > 1 {
+                cleaned = String(cleaned.dropFirst().dropLast())
+            }
+            // Remove trailing commas (from JSON arrays)
+            if cleaned.hasSuffix(",") { cleaned = String(cleaned.dropLast()) }
+            cleaned = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+            return cleaned.isEmpty ? nil : cleaned
+        }
+    }
+
+    /// Cleans action items — filters junk and tries to salvage raw JSON fragment action items.
+    private func cleanActionItems(_ items: [ActionItem]) -> [ActionItem] {
+        items.compactMap { item -> ActionItem? in
+            let task = item.task.trimmingCharacters(in: .whitespacesAndNewlines)
+            let junkPatterns: Set<String> = ["[", "]", "{", "}", ",", "\\n", "\\n\\n", ""]
+            if junkPatterns.contains(task) { return nil }
+            if task.allSatisfy({ "[]{}(),\\\"'\n\r\t ".contains($0) }) { return nil }
+            var cleanedTask = task
+                .replacingOccurrences(of: "\\n", with: " ")
+                .replacingOccurrences(of: "\\t", with: " ")
+            if cleanedTask.hasSuffix(",") { cleanedTask = String(cleanedTask.dropLast()) }
+            if cleanedTask.hasPrefix("\"") && cleanedTask.hasSuffix("\"") && cleanedTask.count > 1 {
+                cleanedTask = String(cleanedTask.dropFirst().dropLast())
+            }
+            cleanedTask = cleanedTask.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !cleanedTask.isEmpty else { return nil }
+
+            var cleanedOwner = item.owner?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .replacingOccurrences(of: "\"", with: "")
+            if let owner = cleanedOwner, owner.isEmpty || owner == "null" || owner == "none" {
+                cleanedOwner = nil
+            }
+            return ActionItem(task: cleanedTask, owner: cleanedOwner)
+        }
     }
 
     /// Returns candidate JSON strings extracted from the LLM response, ordered by likelihood.
