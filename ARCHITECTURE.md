@@ -1,13 +1,13 @@
 # Note Taker - Application Architecture
 
-**Version:** 0.1
-**Date:** 2025-02-13
+**Version:** 1.1.2
+**Date:** 2026-02-19
 
 ---
 
 ## Overview
 
-Note Taker is a native macOS menu bar application built with Swift/SwiftUI. It captures meeting audio (mic + system), transcribes it locally using WhisperKit, and generates structured summaries using a local LLM via Ollama. No data leaves the machine.
+Note Taker is a native macOS menu bar application built with Swift/SwiftUI. It captures meeting audio (mic + system), transcribes it locally using WhisperKit, and generates structured summaries using a local LLM (MLX or Ollama). No data leaves the machine.
 
 ## High-Level Architecture
 
@@ -26,7 +26,7 @@ Note Taker is a native macOS menu bar application built with Swift/SwiftUI. It c
 │  └──────┬───────┘  └───────┬───────┘  └────────┬─────────┘  │
 │         │                  │                    │            │
 │  ┌──────┴───────┐  ┌──────┴────────┐  ┌───────┴──────────┐ │
-│  │ ProcessTap   │  │  WhisperKit   │  │     Ollama       │ │
+│  │ SCStream     │  │  WhisperKit   │  │  MLX / Ollama    │ │
 │  │ + AVAudio    │  │    (MLX)      │  │(local or remote) │ │
 │  └──────────────┘  └───────────────┘  └──────────────────┘  │
 ├─────────────────────────────────────────────────────────────┤
@@ -46,10 +46,12 @@ NoteTaker/
 │   └── Dependencies.swift             # Service factory / DI container
 │
 ├── Audio/
-│   ├── SystemAudioCapture.swift        # Core Audio Taps wrapper
+│   ├── SystemAudioCapture.swift        # ScreenCaptureKit audio capture
 │   ├── MicrophoneCapture.swift         # AVAudioEngine mic capture
 │   ├── AudioCaptureService.swift       # Coordinates both streams
-│   └── AudioLevel.swift               # Real-time audio level monitoring
+│   ├── AudioDeviceManager.swift        # Input device enumeration + hot-plug
+│   ├── AudioLevelMonitor.swift         # Real-time audio level monitoring
+│   └── CoreAudioUtils.swift            # Error types + AudioObjectID helpers
 │
 ├── Transcription/
 │   ├── TranscriptionService.swift      # WhisperKit integration
@@ -103,12 +105,12 @@ User taps "Start" in menu bar
 │  ┌─────────────────────┐    ┌────────────────────────────┐  │
 │  │  SystemAudioCapture  │    │    MicrophoneCapture       │  │
 │  │                      │    │                            │  │
-│  │  ProcessTap for      │    │  AVAudioEngine             │  │
-│  │  selected app        │    │  inputNode → mixerNode     │  │
-│  │  (Zoom, Teams, etc)  │    │                            │  │
+│  │  ScreenCaptureKit    │    │  AVAudioEngine             │  │
+│  │  SCStream (audio     │    │  inputNode → mixerNode     │  │
+│  │  only, all apps)     │    │                            │  │
 │  │       │              │    │       │                    │  │
 │  │       ▼              │    │       ▼                    │  │
-│  │  system_audio.wav    │    │  mic_audio.wav             │  │
+│  │  system.wav          │    │  mic.wav                   │  │
 │  └─────────────────────┘    └────────────────────────────┘  │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
@@ -128,7 +130,7 @@ User taps "Stop"
          ▼
 ┌─ SummarizationService.summarize(transcript) ───────────────┐
 │                                                             │
-│  Ollama (localhost:11434 or configured remote server)       │
+│  MLX (default) or Ollama (localhost:11434 or remote)        │
 │  Structured prompt → JSON response                          │
 │                                                             │
 │  Returns:                                                   │
@@ -155,26 +157,31 @@ User taps "Stop"
 
 ### 1. Audio Capture
 
-#### SystemAudioCapture (Core Audio Taps)
+#### SystemAudioCapture (ScreenCaptureKit)
 
-Captures audio output from a specific application (e.g. Zoom) using `AudioHardwareCreateProcessTap`. Based on patterns from Recap's `ProcessTap.swift`.
+Captures all system audio using ScreenCaptureKit's `SCStream` in audio-only mode. Replaced the previous Core Audio Taps approach (`AudioHardwareCreateProcessTap`) which delivered silent buffers in many configurations (Bluetooth output, stale TCC entries, permission edge cases).
 
 ```
 Key APIs:
-- AudioHardwareCreateProcessTap() — create a tap on a process's audio
-- AudioDeviceCreateIOProcIDWithBlock() — register I/O callback for audio buffers
-- Aggregate device creation — virtual device combining output + tap
+- SCShareableContent.current — verify permission and get display info
+- SCStream — audio capture stream with SCStreamConfiguration
+- SCStreamOutput — delegate receiving CMSampleBuffer audio callbacks
 
 Lifecycle:
-1. activate() — create tap + aggregate device
-2. run() — start I/O proc, begin writing buffers to WAV
-3. stop() — stop I/O proc, close file
-4. invalidate() — destroy tap + aggregate device
+1. init(fileURL:) — create audio file with 48kHz stereo float32 format
+2. start() — async; create SCStream, add audio output, start capture
+3. stream(_:didOutputSampleBuffer:of:) — extract audio, write to WAV
+4. stop() — stop capture, close file
+
+Configuration:
+- capturesAudio = true, excludesCurrentProcessAudio = true
+- captureMicrophone = false (macOS 15+) — mic handled separately
+- Minimal video config (2x2px, 1fps) to reduce overhead
 
 Requirements:
-- macOS 14+ (Sonoma)
-- Audio process must be running and producing audio
-- App needs appropriate permissions
+- macOS 14.2+ (Sonoma)
+- Screen Recording permission (no video is actually recorded)
+- Works with all output devices including Bluetooth
 ```
 
 #### MicrophoneCapture (AVAudioEngine)
@@ -193,19 +200,21 @@ Lifecycle:
 Manages both capture paths. Provides a single interface to the rest of the app.
 
 ```swift
-protocol AudioCaptureServiceProtocol {
-    func startCapture(systemProcess: AudioProcess, includeMic: Bool) async throws
-    func stopCapture() async throws -> CapturedAudio
-    var isCapturing: Bool { get }
+@MainActor
+final class AudioCaptureService: ObservableObject {
+    func startCapture(inputDeviceID: AudioDeviceID? = nil) async throws
+    func stopCapture() -> CapturedAudio?
+    var isRecording: Bool { get }
     var systemAudioLevel: Float { get }  // for UI meters
     var micAudioLevel: Float { get }
 }
 
 struct CapturedAudio {
     let systemAudioURL: URL
-    let micAudioURL: URL?
-    let duration: TimeInterval
+    let microphoneURL: URL
+    let directory: URL
     let startedAt: Date
+    let duration: TimeInterval
 }
 ```
 
@@ -510,19 +519,19 @@ Each error maps to a user-facing message and a recovery action:
 | Package | Purpose | Notes |
 |---|---|---|
 | WhisperKit | Local speech-to-text | Swift package, MLX-optimized |
+| mlx-swift-lm | Local LLM inference | Default summarization backend |
 | GRDB.swift | SQLite wrapper | Lightweight, Swift-native, no Core Data |
 
-Ollama is an external dependency (user installs separately) accessed via HTTP. Defaults to `http://localhost:11434` but configurable to a remote server via Settings. No Swift package needed — just `URLSession` calls to the configured Ollama base URL.
+Ollama is an optional external dependency (user installs separately) accessed via HTTP. Defaults to `http://localhost:11434` but configurable to a remote server via Settings. No Swift package needed — just `URLSession` calls to the configured Ollama base URL.
 
 ### 9. Permissions Required
 
 | Permission | Why | API |
 |---|---|---|
 | Microphone | Capture user's voice | AVAudioEngine (triggers system prompt) |
-| Screen Recording | Core Audio Taps for system audio | AudioHardwareCreateProcessTap (triggers system prompt) |
-| Accessibility | Optional: detect running apps | NSWorkspace (no prompt needed) |
+| Screen Recording | ScreenCaptureKit for system audio | SCStream (triggers system prompt) |
 
-Note: Core Audio Taps requires the Screen Recording permission on macOS, even though we're not capturing video. This is a macOS quirk — the permission dialog will reference screen recording. We should explain this clearly in onboarding.
+Note: ScreenCaptureKit requires the Screen Recording permission on macOS, even though we only capture audio (no video). The permission dialog references screen recording — this is explained in the onboarding flow. If permission appears granted but capture fails (common after debug rebuilds with ad-hoc signing), run `tccutil reset ScreenCapture com.incept5.NoteTaker` and re-grant.
 
 ## Build Phases
 
@@ -557,4 +566,4 @@ Note: Core Audio Taps requires the Screen Recording permission on macOS, even th
 
 ---
 
-*Reference: Recap codebase at `recap-reference/` — particularly `Recap/Audio/Capture/Tap/ProcessTap.swift` for Core Audio Taps implementation.*
+*Reference: Recap codebase at `recap-reference/` — used as architectural reference for the original Core Audio Taps implementation (since replaced with ScreenCaptureKit in v1.1.2).*
