@@ -4,6 +4,7 @@
 
 - **Fixed system audio capture** — Replaced Core Audio Taps with ScreenCaptureKit for reliable system audio recording. The previous approach (`AudioHardwareCreateProcessTap`) delivered silent `system.wav` files in many configurations — Bluetooth output, stale TCC entries, and permission edge cases. Now uses ScreenCaptureKit `SCStream` in audio-only mode, which works reliably across all output devices.
 - **Works without microphone** — Recording now works even when there is no microphone input connected.
+- **Upgrade note** — If upgrading from a previous version, remove NoteTaker from **System Settings > Privacy & Security > Screen & System Audio Recording** before launching v1.1.2. Relaunch the app and grant permission when prompted. If NoteTaker doesn't appear in the prompt, add it manually using the **+** button.
 
 ## 1.1.1
 
