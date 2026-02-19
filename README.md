@@ -17,7 +17,7 @@ Record (mic + system audio)
 
 ## Requirements
 
-- **macOS 14.2+** (Sonoma) — required for Core Audio Taps
+- **macOS 14.2+** (Sonoma) — required for ScreenCaptureKit audio capture
 - **Apple Silicon** (M1 minimum, M2 Pro+ recommended)
 - **16 GB RAM** minimum (32 GB recommended for larger LLM models)
 
@@ -34,7 +34,7 @@ macOS will ask for two permissions:
 | Permission | Why |
 |---|---|
 | **Microphone** | Captures your voice during meetings |
-| **Screen Recording** | Required by macOS for Core Audio Taps to capture system audio (no video is recorded) |
+| **Screen Recording** | Required by macOS for ScreenCaptureKit to capture system audio (no video is recorded) |
 
 Grant both, then restart NoteTaker if prompted.
 
@@ -115,7 +115,7 @@ Menu Bar UI (SwiftUI)
 AppState (Phase-driven state machine)
     |
     +-- AudioCaptureService
-    |     +-- SystemAudioCapture (Core Audio Taps)
+    |     +-- SystemAudioCapture (ScreenCaptureKit)
     |     +-- MicrophoneCapture (AVAudioEngine)
     |
     +-- AudioDeviceManager (input device enumeration)
@@ -127,7 +127,7 @@ AppState (Phase-driven state machine)
     +-- MeetingStore (SQLite via GRDB)
 ```
 
-**Audio capture** uses two independent streams: Core Audio Taps for system audio from the selected app, and AVAudioEngine for microphone input. Both write to WAV files in `~/Library/Application Support/NoteTaker/recordings/`.
+**Audio capture** uses two independent streams: ScreenCaptureKit for system audio (all apps), and AVAudioEngine for microphone input. Both write to WAV files in `~/Library/Application Support/NoteTaker/recordings/`.
 
 **State management** is driven by a single `AppState` class with a `Phase` enum: idle -> recording -> stopped -> transcribing -> transcribed -> summarizing -> summarized. Each phase transition drives the UI.
 
@@ -135,13 +135,13 @@ AppState (Phase-driven state machine)
 
 ### Key Technical Decisions
 
-- **Core Audio Taps** (`AudioHardwareCreateProcessTap`) for driver-free system audio capture — no kernel extensions needed
+- **ScreenCaptureKit** for driver-free system audio capture — no kernel extensions needed, works reliably across all output devices including Bluetooth
 - **Separate audio streams** — mic and system audio are captured and transcribed independently, then merged into a single chronological transcript sorted by timestamp
 - **WhisperKit** for transcription — MLX-optimized for Apple Silicon, runs entirely on-device
 - **MLX** for summarization (default) — runs local LLMs directly on Apple Silicon with no external dependencies. Ollama also supported as an alternative, configurable to use a remote server for access to larger models
 - **SQLite over Core Data** — lighter weight, simpler, no ORM overhead
 - **Structured summary output** — Ollama is prompted to return JSON with distinct fields, not unstructured text
-- **No sandbox** — required for Core Audio Taps to function
+- **No sandbox** — required for system audio capture to function
 
 ## For Developers
 
@@ -221,10 +221,10 @@ The signed and notarized DMG is written to `build/release/NoteTaker-{version}.dm
 ### Notes for Contributors
 
 - No `fatalError` in production paths — use `guard`/`throw` with descriptive errors
-- `@MainActor` for all UI state and Core Audio Tap activation
+- `@MainActor` for all UI state
 - Weak self in all audio callbacks to prevent retain cycles
-- App sandbox is disabled (required for Core Audio Taps)
-- Screen Recording permission is required — without it, audio buffers will be silent
+- App sandbox is disabled (required for system audio capture)
+- Screen Recording permission is required — without it, ScreenCaptureKit cannot capture system audio
 
 ## Privacy
 
