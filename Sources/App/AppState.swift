@@ -137,22 +137,24 @@ final class AppState: ObservableObject {
     }
 
     func startRecording() {
-        do {
-            try captureService.startCapture(inputDeviceID: audioDeviceManager.selectedDeviceID)
-            let now = Date()
-            phase = .recording(since: now)
+        Task {
+            do {
+                try await captureService.startCapture(inputDeviceID: audioDeviceManager.selectedDeviceID)
+                let now = Date()
+                phase = .recording(since: now)
 
-            // Create DB record
-            if let audio = buildCurrentAudio(startedAt: now) {
-                let record = try meetingStore.createMeeting(
-                    startedAt: now,
-                    appName: detectMeetingApp(),
-                    audio: audio
-                )
-                currentMeetingId = record.id
+                // Create DB record
+                if let audio = buildCurrentAudio(startedAt: now) {
+                    let record = try meetingStore.createMeeting(
+                        startedAt: now,
+                        appName: detectMeetingApp(),
+                        audio: audio
+                    )
+                    currentMeetingId = record.id
+                }
+            } catch {
+                phase = .error(error.localizedDescription)
             }
-        } catch {
-            phase = .error(error.localizedDescription)
         }
     }
 

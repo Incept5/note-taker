@@ -2,7 +2,7 @@ import Foundation
 import AVFoundation
 import OSLog
 
-/// Coordinates system audio capture (via Core Audio Taps) and microphone capture.
+/// Coordinates system audio capture (via ScreenCaptureKit) and microphone capture.
 /// Manages output directory creation and publishes audio levels for the UI.
 @MainActor
 final class AudioCaptureService: ObservableObject {
@@ -12,24 +12,18 @@ final class AudioCaptureService: ObservableObject {
     @Published private(set) var micAudioLevel: Float = 0
     @Published private(set) var isRecording = false
 
-    private var systemTap: SystemAudioTap?
-    private var systemRecorder: SystemAudioRecorder?
+    private var systemRecorder: ScreenCaptureAudioRecorder?
     private var micCapture: MicrophoneCapture?
 
     private var recordingStartTime: Date?
     private var outputDirectory: URL?
 
-    // Pre-warm mic capture at init
-    init() {
-        micCapture = MicrophoneCapture()
-    }
-
     // MARK: - Public API
 
-    func startCapture(inputDeviceID: AudioDeviceID? = nil) throws {
+    func startCapture(inputDeviceID: AudioDeviceID? = nil) async throws {
         guard !isRecording else { return }
 
-        logger.info("Starting global audio capture")
+        logger.info("Starting audio capture")
 
         // Create output directory
         let dir = try createOutputDirectory()
@@ -38,26 +32,19 @@ final class AudioCaptureService: ObservableObject {
         let systemURL = dir.appendingPathComponent("system.wav")
         let micURL = dir.appendingPathComponent("mic.wav")
 
-        // 1. Create and activate system audio tap
-        let tap = SystemAudioTap()
-        try tap.activate()
-        self.systemTap = tap
-
-        // 2. Start system audio recorder
-        let recorder = SystemAudioRecorder(fileURL: systemURL, tap: tap)
+        // 1. Create and start system audio recorder (ScreenCaptureKit)
+        let recorder = ScreenCaptureAudioRecorder(fileURL: systemURL)
         recorder.onLevelUpdate = { [weak self] level in
             Task { @MainActor in
                 self?.systemAudioLevel = level
             }
         }
-        try recorder.start()
+        try await recorder.start()
         self.systemRecorder = recorder
 
-        // 3. Start microphone capture with tap's format for synchronization
-        if micCapture == nil {
-            micCapture = MicrophoneCapture()
-        }
-        let mic = micCapture!
+        // 2. Start microphone capture with system recorder's format for synchronization
+        let mic = micCapture ?? MicrophoneCapture()
+        self.micCapture = mic
         mic.onLevelUpdate = { [weak self] level in
             Task { @MainActor in
                 self?.micAudioLevel = level
@@ -100,7 +87,6 @@ final class AudioCaptureService: ObservableObject {
 
         // Clean up references
         systemRecorder = nil
-        systemTap = nil
         outputDirectory = nil
         recordingStartTime = nil
 

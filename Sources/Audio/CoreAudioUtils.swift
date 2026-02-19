@@ -7,12 +7,11 @@ enum AudioCaptureError: LocalizedError {
     case coreAudioError(String)
     case invalidProcessID(pid_t)
     case invalidSystemObject
-    case tapCreationFailed(OSStatus)
-    case deviceCreationFailed(OSStatus)
     case microphonePermissionDenied
-    case unsupportedMacOSVersion
     case noAudioFormat
     case recordingFailed(String)
+    case screenCaptureNotAvailable(String)
+    case streamStartFailed(String)
 
     var errorDescription: String? {
         switch self {
@@ -22,18 +21,16 @@ enum AudioCaptureError: LocalizedError {
             "Invalid process identifier: \(pid)"
         case .invalidSystemObject:
             "Only supported for the system audio object"
-        case .tapCreationFailed(let status):
-            "Process tap creation failed with error \(status). Check Screen Recording permission in System Settings > Privacy & Security."
-        case .deviceCreationFailed(let status):
-            "Audio device creation failed with error \(status)"
         case .microphonePermissionDenied:
             "Microphone permission denied. Grant access in System Settings > Privacy & Security > Microphone."
-        case .unsupportedMacOSVersion:
-            "Core Audio Taps requires macOS 14.2 or later"
         case .noAudioFormat:
-            "Audio format not available from tap"
+            "Audio format not available"
         case .recordingFailed(let message):
             "Recording failed: \(message)"
+        case .screenCaptureNotAvailable(let message):
+            "Screen Recording permission required: \(message)"
+        case .streamStartFailed(let message):
+            "Audio capture failed: \(message)"
         }
     }
 }

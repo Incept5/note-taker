@@ -1,240 +1,258 @@
 import AudioToolbox
 import AVFoundation
 import OSLog
+import ScreenCaptureKit
 
-// MARK: - SystemAudioTap
+// MARK: - ScreenCaptureAudioRecorder
 
-/// Manages the lifecycle of a Core Audio global tap: create tap → build aggregate device → run IO proc.
-/// Cleanup order is critical: stop device → destroy IO proc → destroy aggregate device → destroy tap.
-final class SystemAudioTap {
-    private let logger = Logger(subsystem: "com.incept5.NoteTaker", category: "SystemAudioTap")
-
-    private var processTapID: AudioObjectID = .unknown
-    private var aggregateDeviceID: AudioObjectID = .unknown
-    private var deviceProcID: AudioDeviceIOProcID?
-
-    private(set) var tapStreamDescription: AudioStreamBasicDescription?
-    private(set) var activated = false
-
-    /// Activate the tap. Must be called on the main actor (Core Audio Tap APIs require it).
-    @MainActor
-    func activate() throws {
-        guard !activated else { return }
-
-        logger.debug("Activating global system audio tap")
-
-        let tapDescription = CATapDescription(stereoGlobalTapButExcludeProcesses: [])
-        tapDescription.uuid = UUID()
-        tapDescription.muteBehavior = .unmuted
-
-        var tapID: AudioObjectID = .unknown
-        var err = AudioHardwareCreateProcessTap(tapDescription, &tapID)
-        guard err == noErr else {
-            throw AudioCaptureError.tapCreationFailed(err)
-        }
-
-        logger.debug("Created process tap #\(tapID, privacy: .public)")
-        self.processTapID = tapID
-
-        // Read the tap's stream format before creating the aggregate device
-        self.tapStreamDescription = try tapID.readAudioTapStreamBasicDescription()
-
-        // Build aggregate device combining system output + tap
-        let systemOutputID = try AudioDeviceID.readDefaultSystemOutputDevice()
-        let outputUID = try systemOutputID.readDeviceUID()
-        let aggregateUID = UUID().uuidString
-
-        let description: [String: Any] = [
-            kAudioAggregateDeviceNameKey: "NoteTaker-GlobalTap",
-            kAudioAggregateDeviceUIDKey: aggregateUID,
-            kAudioAggregateDeviceMainSubDeviceKey: outputUID,
-            kAudioAggregateDeviceIsPrivateKey: true,
-            kAudioAggregateDeviceIsStackedKey: false,
-            kAudioAggregateDeviceTapAutoStartKey: true,
-            kAudioAggregateDeviceSubDeviceListKey: [
-                [kAudioSubDeviceUIDKey: outputUID],
-            ],
-            kAudioAggregateDeviceTapListKey: [
-                [
-                    kAudioSubTapDriftCompensationKey: true,
-                    kAudioSubTapUIDKey: tapDescription.uuid.uuidString,
-                ],
-            ],
-        ]
-
-        var aggDeviceID = AudioObjectID.unknown
-        err = AudioHardwareCreateAggregateDevice(description as CFDictionary, &aggDeviceID)
-        guard err == noErr else {
-            // Clean up the tap we already created
-            AudioHardwareDestroyProcessTap(processTapID)
-            processTapID = .unknown
-            throw AudioCaptureError.deviceCreationFailed(err)
-        }
-
-        self.aggregateDeviceID = aggDeviceID
-        self.activated = true
-
-        logger.debug("Created aggregate device #\(aggDeviceID, privacy: .public)")
-    }
-
-    /// Start the IO proc on the aggregate device, delivering audio buffers to the given block.
-    func run(on queue: DispatchQueue, ioBlock: @escaping AudioDeviceIOBlock) throws {
-        guard activated else {
-            throw AudioCaptureError.coreAudioError("Tap not activated")
-        }
-
-        var err = AudioDeviceCreateIOProcIDWithBlock(&deviceProcID, aggregateDeviceID, queue, ioBlock)
-        guard err == noErr else {
-            throw AudioCaptureError.coreAudioError("Failed to create device IO proc: \(err)")
-        }
-
-        err = AudioDeviceStart(aggregateDeviceID, deviceProcID)
-        guard err == noErr else {
-            throw AudioCaptureError.coreAudioError("Failed to start audio device: \(err)")
-        }
-
-        logger.debug("IO proc running on aggregate device")
-    }
-
-    /// Tear down everything in the correct order.
-    func invalidate() {
-        guard activated else { return }
-        defer { activated = false }
-
-        logger.debug("Invalidating global system audio tap")
-
-        // 1. Stop the device
-        if aggregateDeviceID.isValid {
-            var err = AudioDeviceStop(aggregateDeviceID, deviceProcID)
-            if err != noErr {
-                logger.warning("Failed to stop aggregate device: \(err, privacy: .public)")
-            }
-
-            // 2. Destroy IO proc
-            if let procID = deviceProcID {
-                err = AudioDeviceDestroyIOProcID(aggregateDeviceID, procID)
-                if err != noErr {
-                    logger.warning("Failed to destroy IO proc: \(err, privacy: .public)")
-                }
-                deviceProcID = nil
-            }
-
-            // 3. Destroy aggregate device
-            err = AudioHardwareDestroyAggregateDevice(aggregateDeviceID)
-            if err != noErr {
-                logger.warning("Failed to destroy aggregate device: \(err, privacy: .public)")
-            }
-            aggregateDeviceID = .unknown
-        }
-
-        // 4. Destroy tap
-        if processTapID.isValid {
-            let err = AudioHardwareDestroyProcessTap(processTapID)
-            if err != noErr {
-                logger.warning("Failed to destroy process tap: \(err, privacy: .public)")
-            }
-            processTapID = .unknown
-        }
-
-        tapStreamDescription = nil
-    }
-
-    deinit {
-        invalidate()
-    }
-}
-
-// MARK: - SystemAudioRecorder
-
-/// Wraps a SystemAudioTap with file writing. Creates an AVAudioFile and writes PCM buffers from the IO proc.
-final class SystemAudioRecorder {
-    private let logger = Logger(subsystem: "com.incept5.NoteTaker", category: "SystemAudioRecorder")
-    private let queue = DispatchQueue(label: "com.incept5.NoteTaker.SystemAudioTap", qos: .userInitiated)
+/// Captures system audio using ScreenCaptureKit's SCStream (audio-only mode).
+/// Replaces the previous Core Audio Taps approach which delivered silent buffers
+/// in many configurations (Bluetooth output, permission edge cases, etc.).
+final class ScreenCaptureAudioRecorder: NSObject, @unchecked Sendable {
+    private let logger = Logger(subsystem: "com.incept5.NoteTaker", category: "ScreenCaptureAudioRecorder")
+    private let queue = DispatchQueue(label: "com.incept5.NoteTaker.SCStreamAudio", qos: .userInitiated)
 
     let fileURL: URL
-    private let tap: SystemAudioTap
-
+    private var stream: SCStream?
     private var audioFile: AVAudioFile?
+    private var audioFormat: AVAudioFormat?
+
     private(set) var isRecording = false
 
-    /// Current audio level, updated from the IO callback. Read from main actor for UI.
+    /// Audio stream description for synchronizing mic capture format.
+    /// Set to 48kHz stereo float32 — the default ScreenCaptureKit audio format.
+    private(set) var tapStreamDescription: AudioStreamBasicDescription?
+
+    /// Current audio level, updated from the stream callback. Read from main actor for UI.
     var onLevelUpdate: ((Float) -> Void)?
 
-    init(fileURL: URL, tap: SystemAudioTap) {
+    init(fileURL: URL) {
         self.fileURL = fileURL
-        self.tap = tap
+        super.init()
+
+        // Pre-populate with the known ScreenCaptureKit default format (48kHz stereo float32)
+        var desc = AudioStreamBasicDescription(
+            mSampleRate: 48000,
+            mFormatID: kAudioFormatLinearPCM,
+            mFormatFlags: kAudioFormatFlagIsFloat | kAudioFormatFlagIsNonInterleaved,
+            mBytesPerPacket: 4,
+            mFramesPerPacket: 1,
+            mBytesPerFrame: 4,
+            mChannelsPerFrame: 2,
+            mBitsPerChannel: 32,
+            mReserved: 0
+        )
+        self.tapStreamDescription = desc
+
+        // Create the output file immediately with the known format
+        if let format = AVAudioFormat(streamDescription: &desc) {
+            self.audioFormat = format
+            do {
+                self.audioFile = try AVAudioFile(
+                    forWriting: fileURL,
+                    settings: [
+                        AVFormatIDKey: kAudioFormatLinearPCM,
+                        AVSampleRateKey: format.sampleRate,
+                        AVNumberOfChannelsKey: format.channelCount,
+                        AVLinearPCMBitDepthKey: 32,
+                        AVLinearPCMIsFloatKey: true,
+                        AVLinearPCMIsBigEndianKey: false,
+                        AVLinearPCMIsNonInterleaved: true,
+                    ],
+                    commonFormat: .pcmFormatFloat32,
+                    interleaved: false
+                )
+            } catch {
+                logger.error("Failed to create audio file: \(error, privacy: .public)")
+            }
+        }
     }
 
-    /// Start recording. The tap must already be activated.
-    func start() throws {
+    /// Start capturing system audio. Requires Screen Recording permission.
+    func start() async throws {
         guard !isRecording else { return }
 
-        guard var streamDescription = tap.tapStreamDescription else {
-            throw AudioCaptureError.noAudioFormat
+        logger.info("Starting ScreenCaptureKit audio capture")
+
+        // Get shareable content (requires Screen Recording permission)
+        let content: SCShareableContent
+        do {
+            content = try await SCShareableContent.current
+        } catch {
+            logger.error("SCShareableContent.current failed: \(error, privacy: .public)")
+            throw AudioCaptureError.screenCaptureNotAvailable(
+                "Screen Recording permission required. If already granted, toggle it off and back on in System Settings > Privacy & Security > Screen Recording, then restart NoteTaker."
+            )
         }
 
-        guard let format = AVAudioFormat(streamDescription: &streamDescription) else {
-            throw AudioCaptureError.coreAudioError("Failed to create AVAudioFormat from tap stream description")
+        guard let display = content.displays.first else {
+            throw AudioCaptureError.screenCaptureNotAvailable("No displays found")
         }
 
-        logger.info("Recording format: \(format.sampleRate)Hz, \(format.channelCount)ch")
+        // Configure for audio-only capture
+        let config = SCStreamConfiguration()
+        config.capturesAudio = true
+        config.excludesCurrentProcessAudio = true
+        config.sampleRate = 48000
+        config.channelCount = 2
 
-        let settings: [String: Any] = [
-            AVFormatIDKey: kAudioFormatLinearPCM,
-            AVSampleRateKey: format.sampleRate,
-            AVNumberOfChannelsKey: format.channelCount,
-            AVLinearPCMBitDepthKey: 32,
-            AVLinearPCMIsFloatKey: true,
-            AVLinearPCMIsBigEndianKey: false,
-            AVLinearPCMIsNonInterleaved: !format.isInterleaved,
-        ]
-
-        let file = try AVAudioFile(
-            forWriting: fileURL,
-            settings: settings,
-            commonFormat: .pcmFormatFloat32,
-            interleaved: format.isInterleaved
-        )
-
-        self.audioFile = file
-
-        try tap.run(on: queue) { [weak self] inNow, inInputData, inInputTime, outOutputData, inOutputTime in
-            guard let self, let currentFile = self.audioFile else { return }
-
-            guard let buffer = AVAudioPCMBuffer(pcmFormat: format, bufferListNoCopy: inInputData, deallocator: nil) else {
-                return
-            }
-
-            do {
-                try currentFile.write(from: buffer)
-            } catch {
-                self.logger.error("Write error: \(error, privacy: .public)")
-            }
-
-            let level = AudioLevelMonitor.peakLevel(from: buffer)
-            self.onLevelUpdate?(level)
+        // Explicitly disable microphone capture (macOS 15+) — we handle mic separately
+        if #available(macOS 15.0, *) {
+            config.captureMicrophone = false
         }
 
+        // Minimize video overhead — we only want audio
+        config.width = 2
+        config.height = 2
+        config.minimumFrameInterval = CMTime(value: 1, timescale: 1) // 1 fps minimum
+        config.showsCursor = false
+
+        // Create a filter that captures all audio from the display
+        let filter = SCContentFilter(display: display, excludingWindows: [])
+
+        let scStream = SCStream(filter: filter, configuration: config, delegate: self)
+        try scStream.addStreamOutput(self, type: .audio, sampleHandlerQueue: queue)
+
+        do {
+            try await scStream.startCapture()
+        } catch {
+            throw AudioCaptureError.streamStartFailed(
+                "Failed to start audio capture: \(error.localizedDescription)"
+            )
+        }
+
+        self.stream = scStream
         isRecording = true
-        logger.info("System audio recording started → \(self.fileURL.lastPathComponent)")
+
+        logger.info("System audio capture started → \(self.fileURL.lastPathComponent)")
     }
 
     func stop() {
         guard isRecording else { return }
 
-        logger.debug("Stopping system audio recording")
+        logger.debug("Stopping system audio capture")
+
+        isRecording = false
+
+        if let stream {
+            // Stop capture asynchronously — fire and forget since we're tearing down
+            let capturedStream = stream
+            self.stream = nil
+            Task {
+                do {
+                    try await capturedStream.stopCapture()
+                } catch {
+                    // Already tearing down, log but don't throw
+                    Logger(subsystem: "com.incept5.NoteTaker", category: "ScreenCaptureAudioRecorder")
+                        .warning("stopCapture error (non-fatal): \(error, privacy: .public)")
+                }
+            }
+        }
 
         audioFile = nil
-        isRecording = false
-        tap.invalidate()
-    }
-
-    /// The tap's stream description, useful for synchronizing mic capture format.
-    var tapStreamDescription: AudioStreamBasicDescription? {
-        tap.tapStreamDescription
     }
 
     deinit {
         stop()
+    }
+}
+
+// MARK: - SCStreamOutput
+
+extension ScreenCaptureAudioRecorder: SCStreamOutput {
+    nonisolated func stream(
+        _ stream: SCStream,
+        didOutputSampleBuffer sampleBuffer: CMSampleBuffer,
+        of outputType: SCStreamOutputType
+    ) {
+        guard outputType == .audio else { return }
+        guard isRecording else { return }
+
+        // Extract audio buffer list from the sample buffer
+        var blockBuffer: CMBlockBuffer?
+        var bufferListSizeNeeded: Int = 0
+
+        // First call: determine the size needed
+        let sizeStatus = CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
+            sampleBuffer,
+            bufferListSizeNeededOut: &bufferListSizeNeeded,
+            bufferListOut: nil,
+            bufferListSize: 0,
+            blockBufferAllocator: nil,
+            blockBufferMemoryAllocator: nil,
+            flags: 0,
+            blockBufferOut: &blockBuffer
+        )
+
+        guard sizeStatus == noErr || sizeStatus == kCMSampleBufferError_ArrayTooSmall else {
+            return
+        }
+
+        // Allocate buffer list and extract audio data
+        let audioBufferList = AudioBufferList.allocate(maximumBuffers: 2)
+        defer { free(audioBufferList.unsafeMutablePointer) }
+
+        blockBuffer = nil
+        let extractStatus = CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
+            sampleBuffer,
+            bufferListSizeNeededOut: nil,
+            bufferListOut: audioBufferList.unsafeMutablePointer,
+            bufferListSize: bufferListSizeNeeded,
+            blockBufferAllocator: nil,
+            blockBufferMemoryAllocator: nil,
+            flags: kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment,
+            blockBufferOut: &blockBuffer
+        )
+
+        guard extractStatus == noErr else { return }
+
+        // Get or create format from the sample buffer
+        guard let formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer),
+              let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc) else {
+            return
+        }
+
+        // Update format on first buffer if it differs from our default
+        let format: AVAudioFormat
+        if let existingFormat = audioFormat {
+            format = existingFormat
+        } else {
+            var desc = asbd.pointee
+            guard let newFormat = AVAudioFormat(streamDescription: &desc) else { return }
+            audioFormat = newFormat
+            tapStreamDescription = desc
+            format = newFormat
+        }
+
+        // Create PCM buffer from the extracted audio data
+        guard let buffer = AVAudioPCMBuffer(
+            pcmFormat: format,
+            bufferListNoCopy: audioBufferList.unsafePointer,
+            deallocator: nil
+        ) else {
+            return
+        }
+
+        // Write to file
+        guard let file = audioFile else { return }
+        do {
+            try file.write(from: buffer)
+        } catch {
+            Logger(subsystem: "com.incept5.NoteTaker", category: "ScreenCaptureAudioRecorder")
+                .error("Write error: \(error, privacy: .public)")
+        }
+
+        // Update audio level
+        let level = AudioLevelMonitor.peakLevel(from: buffer)
+        onLevelUpdate?(level)
+    }
+}
+
+// MARK: - SCStreamDelegate
+
+extension ScreenCaptureAudioRecorder: SCStreamDelegate {
+    nonisolated func stream(_ stream: SCStream, didStopWithError error: any Error) {
+        Logger(subsystem: "com.incept5.NoteTaker", category: "ScreenCaptureAudioRecorder")
+            .error("Stream stopped with error: \(error, privacy: .public)")
     }
 }
