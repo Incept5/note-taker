@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.3
+
+- **Real-time streaming transcription** — System audio is now transcribed live during recording using a sliding window approach. WhisperKit runs every 10 seconds on the trailing 30 seconds of audio, displaying transcript segments in the recording view as they arrive.
+- **Faster post-recording processing** — Streaming transcript segments are reused for the system audio transcript when recording stops, skipping the redundant batch transcription step. Microphone audio is still transcribed from file.
+- **Live transcript UI** — The recording view now shows a scrollable live transcript panel with timestamps, auto-scrolling to the latest segment.
+- **Improved screen recording permission handling** — Fixed `SCShareableContent` API usage for better compatibility. Clearer messaging to quit and relaunch after granting Screen Recording permission.
+
 ## 1.1.2
 
 - **Fixed system audio capture** — Replaced Core Audio Taps with ScreenCaptureKit for reliable system audio recording. The previous approach (`AudioHardwareCreateProcessTap`) delivered silent `system.wav` files in many configurations — Bluetooth output, stale TCC entries, and permission edge cases. Now uses ScreenCaptureKit `SCStream` in audio-only mode, which works reliably across all output devices.

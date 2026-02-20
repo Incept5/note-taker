@@ -1,7 +1,7 @@
 # Note Taker - Application Architecture
 
-**Version:** 1.1.2
-**Date:** 2026-02-19
+**Version:** 1.1.3
+**Date:** 2026-02-20
 
 ---
 
@@ -54,7 +54,8 @@ NoteTaker/
 │   └── CoreAudioUtils.swift            # Error types + AudioObjectID helpers
 │
 ├── Transcription/
-│   ├── TranscriptionService.swift      # WhisperKit integration
+│   ├── TranscriptionService.swift      # WhisperKit batch transcription
+│   ├── StreamingTranscriber.swift      # Real-time streaming transcription
 │   ├── TranscriptionResult.swift       # Structured result type
 │   └── ModelManager.swift             # Whisper model download/cache
 │
@@ -111,16 +112,31 @@ User taps "Start" in menu bar
 │  │       │              │    │       │                    │  │
 │  │       ▼              │    │       ▼                    │  │
 │  │  system.wav          │    │  mic.wav                   │  │
-│  └─────────────────────┘    └────────────────────────────┘  │
+│  └───────┬─────────────┘    └────────────────────────────┘  │
+│          │                                                   │
+│          │ onAudioBuffer (48kHz stereo)                      │
+│          ▼                                                   │
+│  ┌─────────────────────┐                                    │
+│  │ StreamingTranscriber │  ← downsample to 16kHz mono       │
+│  │                      │  ← WhisperKit every 10s on        │
+│  │  Live transcript     │    trailing 30s window            │
+│  │  segments → UI       │  ← segments displayed in          │
+│  │                      │    RecordingView live              │
+│  └─────────────────────┘                                    │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
          │
 User taps "Stop"
          │
          ▼
-┌─ TranscriptionService.transcribe(systemAudio, micAudio) ───┐
+┌─ Transcription ────────────────────────────────────────────┐
 │                                                             │
-│  WhisperKit processes each file independently               │
+│  If streaming segments available:                           │
+│    → Reuse streaming transcript for system audio            │
+│    → Only transcribe mic.wav from file via WhisperKit       │
+│  Else (fallback):                                           │
+│    → Batch-transcribe both files via WhisperKit             │
+│                                                             │
 │  → systemTranscript (what others said)                      │
 │  → micTranscript (what you said)                            │
 │  → combinedTranscript (interleaved by timestamp)            │
@@ -163,7 +179,7 @@ Captures all system audio using ScreenCaptureKit's `SCStream` in audio-only mode
 
 ```
 Key APIs:
-- SCShareableContent.current — verify permission and get display info
+- SCShareableContent.excludingDesktopWindows(_:onScreenWindowsOnly:) — verify permission and get display info
 - SCStream — audio capture stream with SCStreamConfiguration
 - SCStreamOutput — delegate receiving CMSampleBuffer audio callbacks
 
@@ -207,6 +223,7 @@ final class AudioCaptureService: ObservableObject {
     var isRecording: Bool { get }
     var systemAudioLevel: Float { get }  // for UI meters
     var micAudioLevel: Float { get }
+    var onAudioBuffer: ((AVAudioPCMBuffer) -> Void)?  // for streaming transcription
 }
 
 struct CapturedAudio {
@@ -251,10 +268,34 @@ struct TranscriptSegment {
 }
 ```
 
+#### StreamingTranscriber
+
+Real-time transcription during recording. Receives raw audio buffers from ScreenCaptureKit, accumulates and downsamples them, and periodically runs WhisperKit on a sliding window.
+
+```
+Audio pipeline (runs on audio queue):
+1. appendBuffer() — receives 48kHz stereo float32 PCM buffers
+2. Convert to mono (average L+R channels)
+3. Downsample to 16kHz (take every 3rd sample)
+4. Append to thread-safe AudioSampleAccumulator
+
+Transcription loop (runs on main actor):
+1. Timer fires every 10 seconds
+2. Snapshot last 30s of accumulated 16kHz samples
+3. Run WhisperKit.transcribe(audioArray:) on the window
+4. Merge new segments with existing (deduplicate overlaps)
+5. Publish updated segments → AppState → RecordingView
+
+On stop:
+- Streaming segments reused as system transcript
+- Only mic audio needs batch transcription from file
+```
+
 Key design decisions:
 - **Separate transcription of each stream** — preserves speaker attribution
 - **Timestamps on segments** — enables interleaving mic and system transcripts chronologically
 - **Model management** — download models on first run, cache locally
+- **Streaming is best-effort** — if model fails to load, recording continues without live transcript; batch transcription is used as fallback on stop
 
 ### 3. Summarization
 
@@ -411,6 +452,12 @@ During recording:
 │  │   System: ████░░░░░░  │  │
 │  │   Mic:    ██░░░░░░░░  │  │
 │  │                       │  │
+│  │   ┌─ Live Transcript ┐│  │
+│  │   │ 0:12 We need to  ││  │
+│  │   │ 0:24 The budget  ││  │
+│  │   │ 0:38 Let's move  ││  │
+│  │   └──────────────────┘│  │
+│  │                       │  │
 │  │   [■ Stop Recording]  │  │
 │  └───────────────────────┘  │
 └─────────────────────────────┘
@@ -467,7 +514,7 @@ Single `AppState` observable object drives the entire UI:
 class AppState: ObservableObject {
     enum Phase {
         case idle
-        case recording(since: Date)
+        case recording(since: Date, transcript: [TranscriptSegment])
         case transcribing(progress: Double)
         case summarizing
         case complete(MeetingRecord)
