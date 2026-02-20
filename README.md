@@ -6,11 +6,12 @@ Think [Granola](https://www.granola.so/), but fully local. The privacy guarantee
 
 ## How It Works
 
-NoteTaker lives in your menu bar. Click to start recording — it captures your microphone and system audio (Zoom, Teams, Meet, etc.) simultaneously using separate audio streams. When you stop, it transcribes locally and generates a structured summary with key points, decisions, action items, and open questions. Everything stays on your machine.
+NoteTaker lives in your menu bar. Click to start recording — it captures your microphone and system audio (Zoom, Teams, Meet, etc.) simultaneously using separate audio streams. System audio is transcribed in real-time during recording, with a live transcript displayed as you go. When you stop, it generates a structured summary with key points, decisions, action items, and open questions. Everything stays on your machine.
 
 ```
 Record (mic + system audio)
-    -> Transcribe locally (WhisperKit)
+    -> Stream-transcribe system audio in real-time (WhisperKit)
+    -> On stop: transcribe mic audio from file
         -> Summarize locally (MLX or Ollama)
             -> Browse & copy results
 ```
@@ -83,11 +84,12 @@ By default NoteTaker uses your system's default input device. If you have an ext
 2. Select which app's audio to capture (Zoom, Teams, etc.)
 3. Click **Start Recording**
 4. Audio level meters show both system audio and your microphone
-5. Click **Stop Recording** when done
+5. A **live transcript** appears as system audio is transcribed in real-time
+6. Click **Stop Recording** when done
 
 ### Transcription
 
-Transcription starts automatically after you stop recording. NoteTaker uses WhisperKit (optimized for Apple Silicon) to transcribe both audio streams. The first run downloads the Whisper model (~1.5 GB).
+System audio is transcribed in real-time during recording — you see transcript segments appear every ~10 seconds. When you stop, the streaming transcript is kept and only microphone audio needs batch transcription from file, making post-recording processing faster. If streaming transcription is unavailable (e.g. model not downloaded), NoteTaker falls back to batch-transcribing both streams after recording stops. The first run downloads the Whisper model (~1.5 GB).
 
 ### Summarization
 
@@ -120,16 +122,17 @@ AppState (Phase-driven state machine)
     |
     +-- AudioDeviceManager (input device enumeration)
     |
-    +-- TranscriptionService (WhisperKit)
+    +-- TranscriptionService (WhisperKit batch)
+    |     +-- StreamingTranscriber (real-time during recording)
     |
     +-- SummarizationService (MLX or Ollama)
     |
     +-- MeetingStore (SQLite via GRDB)
 ```
 
-**Audio capture** uses two independent streams: ScreenCaptureKit for system audio (all apps), and AVAudioEngine for microphone input. Both write to WAV files in `~/Library/Application Support/NoteTaker/recordings/`.
+**Audio capture** uses two independent streams: ScreenCaptureKit for system audio (all apps), and AVAudioEngine for microphone input. Both write to WAV files in `~/Library/Application Support/NoteTaker/recordings/`. During recording, system audio buffers are also forwarded to a `StreamingTranscriber` that downsamples from 48kHz to 16kHz and runs WhisperKit every 10 seconds on a sliding 30-second window, producing a live transcript.
 
-**State management** is driven by a single `AppState` class with a `Phase` enum: idle -> recording -> stopped -> transcribing -> transcribed -> summarizing -> summarized. Each phase transition drives the UI.
+**State management** is driven by a single `AppState` class with a `Phase` enum: idle -> recording (with live transcript segments) -> stopped -> transcribing -> transcribed -> summarizing -> summarized. Each phase transition drives the UI.
 
 **Storage** uses SQLite (via GRDB.swift) for meeting metadata, transcripts, and summaries. Audio files are stored on the filesystem.
 
@@ -137,6 +140,7 @@ AppState (Phase-driven state machine)
 
 - **ScreenCaptureKit** for driver-free system audio capture — no kernel extensions needed, works reliably across all output devices including Bluetooth
 - **Separate audio streams** — mic and system audio are captured and transcribed independently, then merged into a single chronological transcript sorted by timestamp
+- **Streaming transcription** — system audio is transcribed in real-time during recording via a sliding window (30s window, 10s interval), giving immediate feedback and faster post-recording processing
 - **WhisperKit** for transcription — MLX-optimized for Apple Silicon, runs entirely on-device
 - **MLX** for summarization (default) — runs local LLMs directly on Apple Silicon with no external dependencies. Ollama also supported as an alternative, configurable to use a remote server for access to larger models
 - **SQLite over Core Data** — lighter weight, simpler, no ORM overhead
@@ -174,7 +178,8 @@ Sources/
   Audio/          SystemAudioCapture, MicrophoneCapture, AudioCaptureService,
                   AudioDeviceManager, AudioLevelMonitor, AudioProcessDiscovery,
                   CoreAudioUtils
-  Transcription/  TranscriptionService, ModelManager, MeetingTranscription
+  Transcription/  TranscriptionService, StreamingTranscriber, ModelManager,
+                  MeetingTranscription
   Summarization/  SummarizationService, MLXClient, MLXModelManager,
                   OllamaClient, MeetingSummary
   Storage/        DatabaseManager (GRDB), MeetingStore, MeetingRecord
