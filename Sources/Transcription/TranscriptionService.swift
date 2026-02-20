@@ -88,6 +88,64 @@ final class TranscriptionService: ObservableObject {
         )
     }
 
+    /// Build a MeetingTranscription using pre-existing streaming segments for system audio,
+    /// only transcribing mic audio from file if present.
+    func transcribeWithStreamingSegments(
+        audio: CapturedAudio,
+        systemTranscript: TimestampedTranscript
+    ) async throws -> MeetingTranscription {
+        let start = Date()
+
+        guard let model = modelManager.selectedModel else {
+            throw TranscriptionError.noModelSelected
+        }
+
+        // Transcribe mic audio if available
+        var micTranscript: TimestampedTranscript? = nil
+
+        if FileManager.default.fileExists(atPath: audio.microphoneURL.path) {
+            try await loadWhisperKit(model: model.id)
+
+            guard let pipe = whisperKit else {
+                throw TranscriptionError.modelLoadFailed("WhisperKit failed to initialize")
+            }
+
+            let options = DecodingOptions(
+                language: "en",
+                temperature: 0.0,
+                wordTimestamps: true
+            )
+
+            progress = 0.5
+            progressText = "Transcribing microphone audio..."
+
+            let transcript = try await transcribeFile(
+                pipe: pipe,
+                path: audio.microphoneURL.path,
+                options: options,
+                label: "Mic"
+            )
+
+            if !transcript.fullText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                micTranscript = transcript
+            }
+        }
+
+        progress = 1.0
+        progressText = "Done"
+
+        let combined = mergeTranscripts(system: systemTranscript, mic: micTranscript)
+        let duration = Date().timeIntervalSince(start)
+
+        return MeetingTranscription(
+            systemTranscript: systemTranscript,
+            micTranscript: micTranscript,
+            combinedText: combined,
+            processingDuration: duration,
+            modelUsed: model.displayName
+        )
+    }
+
     private func transcribeFile(
         pipe: WhisperKit,
         path: String,

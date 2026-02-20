@@ -3,6 +3,7 @@ import SwiftUI
 struct RecordingView: View {
     @ObservedObject var appState: AppState
     let startedAt: Date
+    let transcript: [TranscriptSegment]
 
     @State private var pulseAnimation = false
 
@@ -50,6 +51,11 @@ struct RecordingView: View {
             }
             .padding(.horizontal)
 
+            // Live transcript
+            if !transcript.isEmpty {
+                LiveTranscriptView(segments: transcript)
+            }
+
             // Stop button
             Button(action: { appState.stopRecording() }) {
                 HStack {
@@ -65,6 +71,51 @@ struct RecordingView: View {
             .padding(.bottom, 12)
         }
         .padding(.top, 16)
+    }
+}
+
+// MARK: - LiveTranscriptView
+
+private struct LiveTranscriptView: View {
+    let segments: [TranscriptSegment]
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 4) {
+                    ForEach(Array(segments.enumerated()), id: \.offset) { index, segment in
+                        HStack(alignment: .top, spacing: 6) {
+                            Text(formatTime(segment.startTime))
+                                .font(.system(.caption2, design: .monospaced))
+                                .foregroundStyle(.tertiary)
+                                .frame(width: 36, alignment: .trailing)
+
+                            Text(segment.text.trimmingCharacters(in: .whitespacesAndNewlines))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .id(index)
+                    }
+                }
+                .padding(.horizontal)
+            }
+            .frame(maxHeight: 120)
+            .background(Color.primary.opacity(0.03))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .padding(.horizontal)
+            .onChange(of: segments.count) { _ in
+                withAnimation {
+                    proxy.scrollTo(segments.count - 1, anchor: .bottom)
+                }
+            }
+        }
+    }
+
+    private func formatTime(_ seconds: TimeInterval) -> String {
+        let m = Int(seconds) / 60
+        let s = Int(seconds) % 60
+        return String(format: "%d:%02d", m, s)
     }
 }
 

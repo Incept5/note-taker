@@ -26,6 +26,9 @@ final class ScreenCaptureAudioRecorder: NSObject, @unchecked Sendable {
     /// Current audio level, updated from the stream callback. Read from main actor for UI.
     var onLevelUpdate: ((Float) -> Void)?
 
+    /// Raw audio buffer callback for streaming transcription. Called on the audio queue.
+    var onAudioBuffer: ((AVAudioPCMBuffer) -> Void)?
+
     init(fileURL: URL) {
         self.fileURL = fileURL
         super.init()
@@ -74,14 +77,15 @@ final class ScreenCaptureAudioRecorder: NSObject, @unchecked Sendable {
 
         logger.info("Starting ScreenCaptureKit audio capture")
 
-        // Get shareable content (requires Screen Recording permission)
+        // Get shareable content (requires Screen Recording permission).
+        // On macOS 15+, granting permission requires an app restart to take effect.
         let content: SCShareableContent
         do {
-            content = try await SCShareableContent.current
+            content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
         } catch {
-            logger.error("SCShareableContent.current failed: \(error, privacy: .public)")
+            logger.error("SCShareableContent failed: \(error, privacy: .public)")
             throw AudioCaptureError.screenCaptureNotAvailable(
-                "Screen Recording permission required. If already granted, toggle it off and back on in System Settings > Privacy & Security > Screen Recording, then restart NoteTaker."
+                "Screen Recording permission required. Grant access in System Settings > Privacy & Security > Screen Recording, then fully quit and relaunch NoteTaker."
             )
         }
 
@@ -241,6 +245,9 @@ extension ScreenCaptureAudioRecorder: SCStreamOutput {
             Logger(subsystem: "com.incept5.NoteTaker", category: "ScreenCaptureAudioRecorder")
                 .error("Write error: \(error, privacy: .public)")
         }
+
+        // Forward buffer for streaming transcription
+        onAudioBuffer?(buffer)
 
         // Update audio level
         let level = AudioLevelMonitor.peakLevel(from: buffer)

@@ -1,13 +1,14 @@
 import SwiftUI
 import Combine
 import AppKit
+import OSLog
 
 /// Centralized app state tying together process discovery, audio capture, and UI phase.
 @MainActor
 final class AppState: ObservableObject {
     enum Phase: Equatable {
         case idle
-        case recording(since: Date)
+        case recording(since: Date, transcript: [TranscriptSegment])
         case stopped(CapturedAudio)
         case transcribing(CapturedAudio, progress: Double)
         case transcribed(CapturedAudio, MeetingTranscription)
@@ -18,7 +19,8 @@ final class AppState: ObservableObject {
         static func == (lhs: Phase, rhs: Phase) -> Bool {
             switch (lhs, rhs) {
             case (.idle, .idle): true
-            case (.recording(let a), .recording(let b)): a == b
+            case (.recording(let a, let ta), .recording(let b, let tb)):
+                a == b && ta.count == tb.count
             case (.stopped(let a), .stopped(let b)): a.directory == b.directory
             case (.transcribing(let a, _), .transcribing(let b, _)): a.directory == b.directory
             case (.transcribed(let a, _), .transcribed(let b, _)): a.directory == b.directory
@@ -106,6 +108,7 @@ final class AppState: ObservableObject {
     var onOpenHistory: (() -> Void)?
 
     private var currentMeetingId: String?
+    private var streamingTranscriber: StreamingTranscriber?
 
     init() {
         let mm = ModelManager()
@@ -139,9 +142,18 @@ final class AppState: ObservableObject {
     func startRecording() {
         Task {
             do {
+                // Set up streaming transcriber before starting capture
+                let transcriber = StreamingTranscriber(modelManager: modelManager)
+                self.streamingTranscriber = transcriber
+
+                // Wire audio buffer forwarding
+                captureService.onAudioBuffer = { [weak transcriber] buffer in
+                    transcriber?.appendBuffer(buffer)
+                }
+
                 try await captureService.startCapture(inputDeviceID: audioDeviceManager.selectedDeviceID)
                 let now = Date()
-                phase = .recording(since: now)
+                phase = .recording(since: now, transcript: [])
 
                 // Create DB record
                 if let audio = buildCurrentAudio(startedAt: now) {
@@ -152,13 +164,36 @@ final class AppState: ObservableObject {
                     )
                     currentMeetingId = record.id
                 }
+
+                // Load model and start streaming transcription
+                transcriber.onSegmentsUpdated = { [weak self] segments in
+                    guard let self else { return }
+                    if case .recording(let since, _) = self.phase {
+                        self.phase = .recording(since: since, transcript: segments)
+                    }
+                }
+
+                do {
+                    try await transcriber.loadModel()
+                    transcriber.start()
+                } catch {
+                    // Non-fatal: streaming won't work but recording continues
+                    logger.warning("Streaming transcription unavailable: \(error, privacy: .public)")
+                }
             } catch {
                 phase = .error(error.localizedDescription)
             }
         }
     }
 
+    private let logger = Logger(subsystem: "com.incept5.NoteTaker", category: "AppState")
+
     func stopRecording() {
+        // Stop streaming transcriber
+        let transcriber = streamingTranscriber
+        streamingTranscriber?.stop()
+        captureService.onAudioBuffer = nil
+
         if let result = captureService.stopCapture() {
             phase = .stopped(result)
 
@@ -167,11 +202,21 @@ final class AppState: ObservableObject {
                 try? meetingStore.updateWithRecordingComplete(id: id, duration: result.duration)
             }
 
-            // Auto-start transcription
-            startTranscription(audio: result)
+            // If we have streaming segments, use them instead of re-transcribing system audio
+            if let transcriber, !transcriber.segments.isEmpty {
+                startTranscriptionWithStreamingSegments(
+                    audio: result,
+                    streamingTranscript: transcriber.timestampedTranscript
+                )
+            } else {
+                // Fallback: full batch transcription
+                startTranscription(audio: result)
+            }
         } else {
             phase = .idle
         }
+
+        streamingTranscriber = nil
     }
 
     func startTranscription(audio: CapturedAudio) {
@@ -214,6 +259,44 @@ final class AppState: ObservableObject {
                 progressTask.cancel()
                 phase = .error(error.localizedDescription)
 
+                if let id = currentMeetingId {
+                    try? meetingStore.updateStatus(id: id, status: "error")
+                }
+            }
+        }
+    }
+
+    /// Use streaming transcript for system audio and only transcribe mic audio from file.
+    func startTranscriptionWithStreamingSegments(audio: CapturedAudio, streamingTranscript: TimestampedTranscript) {
+        phase = .transcribing(audio, progress: 0.5)
+
+        Task {
+            do {
+                let result = try await transcriptionService.transcribeWithStreamingSegments(
+                    audio: audio,
+                    systemTranscript: streamingTranscript
+                )
+                phase = .transcribed(audio, result)
+
+                if let id = currentMeetingId {
+                    try? meetingStore.updateWithTranscription(id: id, transcription: result)
+                }
+
+                // Auto-start summarization
+                if summarizationBackend == "mlx" {
+                    if let modelId = selectedMLXModel, mlxModelManager.modelIsDownloaded(modelId) {
+                        startSummarization(audio: audio, transcription: result)
+                    }
+                } else {
+                    if selectedOllamaModel != nil {
+                        let available = await summarizationService.ollamaClient.checkAvailability()
+                        if available {
+                            startSummarization(audio: audio, transcription: result)
+                        }
+                    }
+                }
+            } catch {
+                phase = .error(error.localizedDescription)
                 if let id = currentMeetingId {
                     try? meetingStore.updateStatus(id: id, status: "error")
                 }

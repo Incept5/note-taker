@@ -12,6 +12,9 @@ final class AudioCaptureService: ObservableObject {
     @Published private(set) var micAudioLevel: Float = 0
     @Published private(set) var isRecording = false
 
+    /// Raw audio buffer callback for streaming transcription. Called on audio queue.
+    var onAudioBuffer: ((AVAudioPCMBuffer) -> Void)?
+
     private var systemRecorder: ScreenCaptureAudioRecorder?
     private var micCapture: MicrophoneCapture?
 
@@ -38,6 +41,9 @@ final class AudioCaptureService: ObservableObject {
             Task { @MainActor in
                 self?.systemAudioLevel = level
             }
+        }
+        recorder.onAudioBuffer = { [weak self] buffer in
+            self?.onAudioBuffer?(buffer)
         }
         try await recorder.start()
         self.systemRecorder = recorder

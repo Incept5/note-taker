@@ -57,8 +57,8 @@ struct MenuBarPopover: View {
             case .idle:
                 ReadyView(appState: appState)
 
-            case .recording(let since):
-                RecordingView(appState: appState, startedAt: since)
+            case .recording(let since, let transcript):
+                RecordingView(appState: appState, startedAt: since, transcript: transcript)
 
             case .stopped(let audio):
                 stoppedView(audio)

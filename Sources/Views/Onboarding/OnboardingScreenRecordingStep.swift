@@ -43,7 +43,7 @@ struct OnboardingScreenRecordingStep: View {
                     .controlSize(.small)
                 }
 
-                Text("You may need to restart NoteTaker after granting permission.")
+                Text("After granting permission, fully quit and relaunch NoteTaker.")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
                     .multilineTextAlignment(.center)
@@ -68,7 +68,7 @@ struct OnboardingScreenRecordingStep: View {
     private func checkPermission() async {
         checking = true
         do {
-            _ = try await SCShareableContent.current
+            _ = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
             isGranted = true
         } catch {
             isGranted = false
