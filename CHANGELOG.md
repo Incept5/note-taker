@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.4
+
+- **Microphone mixing into system audio** — ScreenCaptureKit only captures remote participants' audio. Your own voice was missing from transcripts. NoteTaker now captures mic input via AVAudioEngine and mixes it into the system audio stream in real-time, so transcripts contain all voices in a single combined recording.
+- **Mic toggle in Settings** — Enable or disable microphone capture with a switch in the new Audio Capture section. Enabled by default.
+- **Mic device picker** — Choose which microphone to use from a list of available input devices, with automatic hot-plug detection when devices are connected or disconnected.
+- **Consistent cross-version behavior** — Mic capture uses AVAudioEngine on all macOS versions (14.2+) rather than relying on platform-specific ScreenCaptureKit APIs, ensuring reliable behavior everywhere.
+
 ## 1.1.3
 
 - **Real-time streaming transcription** — System audio is now transcribed live during recording using a sliding window approach. WhisperKit runs every 10 seconds on the trailing 30 seconds of audio, displaying transcript segments in the recording view as they arrive.
