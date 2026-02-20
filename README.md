@@ -231,6 +231,10 @@ The signed and notarized DMG is written to `build/release/NoteTaker-{version}.dm
 - App sandbox is disabled (required for system audio capture)
 - Screen Recording permission is required — without it, ScreenCaptureKit cannot capture system audio
 
+## Troubleshooting
+
+See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for solutions to common issues, including permission problems when upgrading from a previous version.
+
 ## Privacy
 
 NoteTaker makes **zero network calls** for audio capture, transcription, and summarization (when using MLX) — everything runs entirely on-device. If you use Ollama on a remote server, the transcript text is sent to that server for summarization — but this is a machine you control on your own network, not a third-party cloud service. Audio files, transcripts, and summaries are stored locally in `~/Library/Application Support/NoteTaker/`. No telemetry, no analytics, no cloud sync.
