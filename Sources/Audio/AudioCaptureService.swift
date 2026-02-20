@@ -2,28 +2,26 @@ import Foundation
 import AVFoundation
 import OSLog
 
-/// Coordinates system audio capture (via ScreenCaptureKit) and microphone capture.
+/// Coordinates system audio capture via ScreenCaptureKit.
 /// Manages output directory creation and publishes audio levels for the UI.
 @MainActor
 final class AudioCaptureService: ObservableObject {
     private let logger = Logger(subsystem: "com.incept5.NoteTaker", category: "AudioCaptureService")
 
     @Published private(set) var systemAudioLevel: Float = 0
-    @Published private(set) var micAudioLevel: Float = 0
     @Published private(set) var isRecording = false
 
     /// Raw audio buffer callback for streaming transcription. Called on audio queue.
     var onAudioBuffer: ((AVAudioPCMBuffer) -> Void)?
 
     private var systemRecorder: ScreenCaptureAudioRecorder?
-    private var micCapture: MicrophoneCapture?
 
     private var recordingStartTime: Date?
     private var outputDirectory: URL?
 
     // MARK: - Public API
 
-    func startCapture(inputDeviceID: AudioDeviceID? = nil) async throws {
+    func startCapture(micEnabled: Bool = true, micDeviceUID: String? = nil) async throws {
         guard !isRecording else { return }
 
         logger.info("Starting audio capture")
@@ -33,9 +31,9 @@ final class AudioCaptureService: ObservableObject {
         self.outputDirectory = dir
 
         let systemURL = dir.appendingPathComponent("system.wav")
-        let micURL = dir.appendingPathComponent("mic.wav")
 
-        // 1. Create and start system audio recorder (ScreenCaptureKit)
+        // Start system audio recorder (ScreenCaptureKit) — captures all audio
+        // including the local user's voice via meeting app mix
         let recorder = ScreenCaptureAudioRecorder(fileURL: systemURL)
         recorder.onLevelUpdate = { [weak self] level in
             Task { @MainActor in
@@ -45,18 +43,8 @@ final class AudioCaptureService: ObservableObject {
         recorder.onAudioBuffer = { [weak self] buffer in
             self?.onAudioBuffer?(buffer)
         }
-        try await recorder.start()
+        try await recorder.start(micEnabled: micEnabled, micDeviceUID: micDeviceUID)
         self.systemRecorder = recorder
-
-        // 2. Start microphone capture with system recorder's format for synchronization
-        let mic = micCapture ?? MicrophoneCapture()
-        self.micCapture = mic
-        mic.onLevelUpdate = { [weak self] level in
-            Task { @MainActor in
-                self?.micAudioLevel = level
-            }
-        }
-        try mic.start(outputURL: micURL, tapStreamDescription: recorder.tapStreamDescription, deviceID: inputDeviceID)
 
         recordingStartTime = Date()
         isRecording = true
@@ -72,20 +60,17 @@ final class AudioCaptureService: ObservableObject {
         let startTime = recordingStartTime ?? Date()
         let duration = Date().timeIntervalSince(startTime)
 
-        // Stop mic first (less critical), then system recorder
-        micCapture?.stop()
         systemRecorder?.stop()
 
         // Reset levels
         systemAudioLevel = 0
-        micAudioLevel = 0
         isRecording = false
 
         guard let dir = outputDirectory else { return nil }
 
         let result = CapturedAudio(
             systemAudioURL: dir.appendingPathComponent("system.wav"),
-            microphoneURL: dir.appendingPathComponent("mic.wav"),
+            microphoneURL: nil,
             directory: dir,
             startedAt: startTime,
             duration: duration

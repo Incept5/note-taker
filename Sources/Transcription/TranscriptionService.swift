@@ -49,47 +49,21 @@ final class TranscriptionService: ObservableObject {
             label: "System"
         )
 
-        progress = 0.5
-
-        // Transcribe mic audio if available
-        var micTranscript: TimestampedTranscript? = nil
-
-        if FileManager.default.fileExists(atPath: audio.microphoneURL.path) {
-            progressText = "Transcribing microphone audio..."
-
-            let transcript = try await transcribeFile(
-                pipe: pipe,
-                path: audio.microphoneURL.path,
-                options: options,
-                label: "Mic"
-            )
-
-            if !transcript.fullText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                micTranscript = transcript
-            }
-        }
-
         progress = 1.0
         progressText = "Done"
-
-        // Merge both streams into a single chronological transcript.
-        // Whisper doesn't do speaker diarization, so we interleave segments
-        // by timestamp rather than labelling them with misleading speaker names.
-        let combined = mergeTranscripts(system: systemTranscript, mic: micTranscript)
 
         let duration = Date().timeIntervalSince(start)
 
         return MeetingTranscription(
             systemTranscript: systemTranscript,
-            micTranscript: micTranscript,
-            combinedText: combined,
+            micTranscript: nil,
+            combinedText: systemTranscript.fullText.trimmingCharacters(in: .whitespacesAndNewlines),
             processingDuration: duration,
             modelUsed: model.displayName
         )
     }
 
-    /// Build a MeetingTranscription using pre-existing streaming segments for system audio,
-    /// only transcribing mic audio from file if present.
+    /// Build a MeetingTranscription using pre-existing streaming segments for system audio.
     func transcribeWithStreamingSegments(
         audio: CapturedAudio,
         systemTranscript: TimestampedTranscript
@@ -100,47 +74,15 @@ final class TranscriptionService: ObservableObject {
             throw TranscriptionError.noModelSelected
         }
 
-        // Transcribe mic audio if available
-        var micTranscript: TimestampedTranscript? = nil
-
-        if FileManager.default.fileExists(atPath: audio.microphoneURL.path) {
-            try await loadWhisperKit(model: model.id)
-
-            guard let pipe = whisperKit else {
-                throw TranscriptionError.modelLoadFailed("WhisperKit failed to initialize")
-            }
-
-            let options = DecodingOptions(
-                language: "en",
-                temperature: 0.0,
-                wordTimestamps: true
-            )
-
-            progress = 0.5
-            progressText = "Transcribing microphone audio..."
-
-            let transcript = try await transcribeFile(
-                pipe: pipe,
-                path: audio.microphoneURL.path,
-                options: options,
-                label: "Mic"
-            )
-
-            if !transcript.fullText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                micTranscript = transcript
-            }
-        }
-
         progress = 1.0
         progressText = "Done"
 
-        let combined = mergeTranscripts(system: systemTranscript, mic: micTranscript)
         let duration = Date().timeIntervalSince(start)
 
         return MeetingTranscription(
             systemTranscript: systemTranscript,
-            micTranscript: micTranscript,
-            combinedText: combined,
+            micTranscript: nil,
+            combinedText: systemTranscript.fullText.trimmingCharacters(in: .whitespacesAndNewlines),
             processingDuration: duration,
             modelUsed: model.displayName
         )
@@ -201,30 +143,6 @@ final class TranscriptionService: ObservableObject {
         return stripped
             .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    /// Merge system and mic transcripts into a single chronological text.
-    /// Segments are interleaved by start time and deduplicated where they overlap
-    /// (system audio often contains the local speaker's voice too).
-    private func mergeTranscripts(system: TimestampedTranscript, mic: TimestampedTranscript?) -> String {
-        guard let mic = mic, !mic.segments.isEmpty else {
-            return system.fullText.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-
-        // Merge all segments and sort by start time
-        var all = system.segments + mic.segments
-        all.sort { $0.startTime < $1.startTime }
-
-        // Build combined text from sorted segments
-        var combined = ""
-        for segment in all {
-            let text = segment.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            if text.isEmpty { continue }
-            if !combined.isEmpty { combined += " " }
-            combined += text
-        }
-
-        return combined.isEmpty ? system.fullText : combined
     }
 
     private func loadWhisperKit(model: String) async throws {

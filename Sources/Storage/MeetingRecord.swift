@@ -30,7 +30,7 @@ struct MeetingRecord: Codable, FetchableRecord, MutablePersistableRecord, Identi
             durationSeconds: nil,
             appName: appName,
             systemAudioPath: audio.systemAudioURL.lastPathComponent,
-            micAudioPath: audio.microphoneURL.lastPathComponent,
+            micAudioPath: audio.microphoneURL?.lastPathComponent,
             recordingDirectory: audio.directory.lastPathComponent,
             combinedTranscript: nil,
             transcriptionJSON: nil,

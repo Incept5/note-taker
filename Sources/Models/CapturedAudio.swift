@@ -2,7 +2,7 @@ import Foundation
 
 struct CapturedAudio {
     let systemAudioURL: URL
-    let microphoneURL: URL
+    let microphoneURL: URL?
     let directory: URL
     let startedAt: Date
     let duration: TimeInterval

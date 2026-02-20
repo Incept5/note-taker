@@ -36,19 +36,12 @@ struct RecordingView: View {
                     .foregroundStyle(.primary)
             }
 
-            // Level meters
-            VStack(spacing: 8) {
-                LevelMeter(
-                    label: "System Audio",
-                    icon: "speaker.wave.2",
-                    level: appState.captureService.systemAudioLevel
-                )
-                LevelMeter(
-                    label: "Microphone",
-                    icon: "mic",
-                    level: appState.captureService.micAudioLevel
-                )
-            }
+            // Level meter
+            LevelMeter(
+                label: "Audio",
+                icon: "speaker.wave.2",
+                level: appState.captureService.systemAudioLevel
+            )
             .padding(.horizontal)
 
             // Live transcript

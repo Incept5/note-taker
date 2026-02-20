@@ -83,6 +83,12 @@ final class AppState: ObservableObject {
         }
     }
 
+    @Published var micEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(micEnabled, forKey: "micEnabled")
+        }
+    }
+
     @Published var ollamaServerURL: String {
         didSet {
             UserDefaults.standard.set(ollamaServerURL, forKey: "ollamaServerURL")
@@ -126,6 +132,7 @@ final class AppState: ObservableObject {
         summarizationBackend = UserDefaults.standard.string(forKey: "summarizationBackend") ?? "mlx"
         selectedMLXModel = UserDefaults.standard.string(forKey: "selectedMLXModel")
         selectedOllamaModel = UserDefaults.standard.string(forKey: "selectedOllamaModel")
+        micEnabled = UserDefaults.standard.object(forKey: "micEnabled") as? Bool ?? true
 
         // Show onboarding if never completed
         if !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding") {
@@ -151,7 +158,10 @@ final class AppState: ObservableObject {
                     transcriber?.appendBuffer(buffer)
                 }
 
-                try await captureService.startCapture(inputDeviceID: audioDeviceManager.selectedDeviceID)
+                try await captureService.startCapture(
+                    micEnabled: micEnabled,
+                    micDeviceUID: micEnabled ? audioDeviceManager.selectedInputDeviceUID : nil
+                )
                 let now = Date()
                 phase = .recording(since: now, transcript: [])
 
@@ -415,7 +425,7 @@ final class AppState: ObservableObject {
 
         return CapturedAudio(
             systemAudioURL: latestDir.appendingPathComponent("system.wav"),
-            microphoneURL: latestDir.appendingPathComponent("mic.wav"),
+            microphoneURL: nil,
             directory: latestDir,
             startedAt: startedAt,
             duration: 0

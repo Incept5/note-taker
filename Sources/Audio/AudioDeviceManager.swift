@@ -24,12 +24,6 @@ final class AudioDeviceManager: ObservableObject {
         }
     }
 
-    /// The resolved AudioDeviceID for the current selection, or nil to use system default.
-    var selectedDeviceID: AudioDeviceID? {
-        guard let uid = selectedInputDeviceUID else { return nil }
-        return inputDevices.first(where: { $0.uid == uid })?.id
-    }
-
     /// Stored outside actor isolation so deinit can access it.
     private nonisolated(unsafe) var listenerBlock: AudioObjectPropertyListenerBlock?
 
@@ -108,7 +102,6 @@ final class AudioDeviceManager: ObservableObject {
             logger.error("Failed to install device change listener: \(status)")
         }
     }
-
 
     // MARK: - Core Audio Helpers
 
