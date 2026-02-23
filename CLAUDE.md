@@ -12,6 +12,7 @@ Think Granola, but fully local — the privacy guarantee is architectural, not c
 - `ARCHITECTURE.md` — Technical architecture, component design, data flow
 - `CHANGELOG.md` — Release history and feature notes
 - `TROUBLESHOOTING.md` — Common issues and fixes
+- `FutureEnhancements.md` — Planned features and roadmap (speaker diarization, etc.)
 
 ## Tech Stack
 
@@ -42,6 +43,7 @@ Think Granola, but fully local — the privacy guarantee is architectural, not c
 - **Native macOS (not Electron/Tauri)** — deeply coupled to Apple APIs (ScreenCaptureKit, WhisperKit, AVAudioEngine). Native gives best performance and smallest footprint.
 - **SQLite over Core Data** — lighter weight, simpler, no ORM overhead.
 - **Structured summary output** — LLM prompted for JSON with distinct fields (key points, decisions, action items), not unstructured text.
+- **Segmented transcript display** — `SegmentedTranscriptView` groups segments into 10-second paragraphs with timestamp pills and speaker change detection. When mic is enabled, system ("Others") and mic ("You") segments are interleaved chronologically with colour-coded labels via `interleavedSpeakerSegments()` on `MeetingTranscription`.
 - **No mobile** — iOS cannot tap into other apps' audio (sandboxing). A mobile version would be a fundamentally different product.
 - **App Sandbox disabled** — required for ScreenCaptureKit system audio capture.
 
