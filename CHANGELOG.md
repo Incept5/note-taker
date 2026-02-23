@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.5
+
+- **Segmented transcript view** — Transcripts are now displayed as readable paragraphs broken every 10 seconds or at detected speaker changes, with timestamp pills and dividers. Replaces the previous wall of unbroken text.
+- **Interleaved speaker labels** — When microphone capture is enabled, system audio ("Others") and mic ("You") transcript segments are merged chronologically and displayed as a conversation with colour-coded speaker labels (green for You, blue for Others).
+- **Transcript in summary view** — The summary screen now includes a collapsible transcript section inline, removing the need to navigate away to view the raw transcript.
+- **Consistent across all views** — The improved transcript display is used everywhere: live recording, transcription result, summary result, meeting detail, and history window.
+
 ## 1.1.4
 
 - **Microphone mixing into system audio** — ScreenCaptureKit only captures remote participants' audio. Your own voice was missing from transcripts. NoteTaker now captures mic input via AVAudioEngine and mixes it into the system audio stream in real-time, so transcripts contain all voices in a single combined recording.
