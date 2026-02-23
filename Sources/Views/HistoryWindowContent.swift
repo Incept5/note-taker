@@ -174,7 +174,9 @@ private struct HistoryWindowDetailView: View {
                         }
                     }
                 ) {
-                    if let transcript = meeting.combinedTranscript, !transcript.isEmpty {
+                    if let transcription = meeting.decodedTranscription() {
+                        transcriptContent(transcription)
+                    } else if let transcript = meeting.combinedTranscript, !transcript.isEmpty {
                         Text(transcript)
                             .font(.callout)
                             .textSelection(.enabled)
@@ -230,6 +232,13 @@ private struct HistoryWindowDetailView: View {
             }
         }
         .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Transcript Content
+
+    @ViewBuilder
+    private func transcriptContent(_ transcription: MeetingTranscription) -> some View {
+        SegmentedTranscriptView(speakerSegments: transcription.interleavedSpeakerSegments())
     }
 
     // MARK: - Summary Content

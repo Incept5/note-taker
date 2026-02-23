@@ -103,7 +103,9 @@ struct MeetingDetailView: View {
                         }
                     }
                 ) {
-                    if let transcript = meeting.combinedTranscript, !transcript.isEmpty {
+                    if let transcription = meeting.decodedTranscription() {
+                        transcriptContent(transcription)
+                    } else if let transcript = meeting.combinedTranscript, !transcript.isEmpty {
                         Text(transcript)
                             .font(.callout)
                             .textSelection(.enabled)
@@ -213,6 +215,13 @@ struct MeetingDetailView: View {
         Text("Summarized by \(summary.modelUsed)")
             .font(.caption2)
             .foregroundStyle(.tertiary)
+    }
+
+    // MARK: - Transcript Content
+
+    @ViewBuilder
+    private func transcriptContent(_ transcription: MeetingTranscription) -> some View {
+        SegmentedTranscriptView(speakerSegments: transcription.interleavedSpeakerSegments())
     }
 
     // MARK: - Helpers

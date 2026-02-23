@@ -87,9 +87,6 @@ struct MenuBarPopover: View {
                     summary: summary,
                     audio: audio,
                     transcription: transcription,
-                    onViewTranscript: {
-                        appState.phase = .transcribed(audio, transcription)
-                    },
                     onRegenerate: {
                         appState.startSummarization(audio: audio, transcription: transcription)
                     },

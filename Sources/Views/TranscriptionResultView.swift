@@ -31,21 +31,7 @@ struct TranscriptionResultView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
-                    if let mic = result.micTranscript, !mic.fullText.isEmpty {
-                        sectionHeader("Others")
-                        Text(result.systemTranscript.fullText)
-                            .font(.system(.body, design: .default))
-                            .textSelection(.enabled)
-
-                        sectionHeader("You")
-                        Text(mic.fullText)
-                            .font(.system(.body, design: .default))
-                            .textSelection(.enabled)
-                    } else {
-                        Text(result.systemTranscript.fullText)
-                            .font(.system(.body, design: .default))
-                            .textSelection(.enabled)
-                    }
+                    SegmentedTranscriptView(speakerSegments: result.interleavedSpeakerSegments())
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal)

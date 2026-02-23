@@ -4,7 +4,6 @@ struct SummaryResultView: View {
     let summary: MeetingSummary
     let audio: CapturedAudio
     let transcription: MeetingTranscription
-    let onViewTranscript: () -> Void
     let onRegenerate: () -> Void
     let onNewRecording: () -> Void
 
@@ -79,7 +78,7 @@ struct SummaryResultView: View {
                         }
                     }
 
-                    // Full Summary (at the bottom)
+                    // Full Summary
                     if !summary.summary.isEmpty {
                         sectionCard("Full Summary", icon: "doc.plaintext", color: .secondary) {
                             Text(summary.summary)
@@ -87,11 +86,24 @@ struct SummaryResultView: View {
                                 .textSelection(.enabled)
                         }
                     }
+
+                    // Transcript
+                    DisclosureGroup {
+                        SegmentedTranscriptView(speakerSegments: transcription.interleavedSpeakerSegments())
+                    } label: {
+                        Label("Transcript", systemImage: "text.alignleft")
+                            .font(.caption.bold())
+                            .foregroundStyle(.teal)
+                            .textCase(.uppercase)
+                    }
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.teal.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal)
             }
-            .frame(maxHeight: 250)
+            .frame(maxHeight: 350)
 
             Divider()
 
@@ -99,10 +111,6 @@ struct SummaryResultView: View {
                 Button("Copy") {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(summary.markdownText, forType: .string)
-                }
-
-                Button("Transcript") {
-                    onViewTranscript()
                 }
 
                 Button("Regenerate") {
