@@ -85,6 +85,15 @@ When a monitored app launches, recording starts automatically. When the meeting 
 
 Auto-stop only applies to auto-started recordings — manually started recordings are never stopped automatically.
 
+### Recording Retention
+
+Audio recordings are compressed using AAC (M4A format), keeping file sizes small (~50-80 MB for a 58-minute meeting). Old recordings are automatically deleted on launch based on a configurable retention period.
+
+1. Open **Settings** (gear icon) → **Audio Capture**
+2. Choose a retention period: **7, 14, 28, 60, or 90 days**
+
+The default is **28 days**. Changes take effect on the next app launch.
+
 ### Microphone Settings
 
 By default, microphone capture is **enabled** and uses the system default input device. Your mic audio is mixed into the system audio stream so all voices appear in the transcript.
@@ -147,7 +156,7 @@ AppState (Phase-driven state machine)
     +-- MeetingAppMonitor (NSWorkspace launch/terminate detection)
 ```
 
-**Audio capture** uses ScreenCaptureKit for system audio (all apps) with microphone input mixed in via AVAudioEngine. Mic samples are captured into a thread-safe ring buffer and added to the system audio stream in the SCStream callback, producing a single combined WAV file in `~/Library/Application Support/NoteTaker/recordings/`. During recording, audio buffers are also forwarded to a `StreamingTranscriber` that downsamples from 48kHz to 16kHz and runs WhisperKit every 10 seconds on a sliding 30-second window, producing a live transcript.
+**Audio capture** uses ScreenCaptureKit for system audio (all apps) with microphone input mixed in via AVAudioEngine. Mic samples are captured into a thread-safe ring buffer and added to the system audio stream in the SCStream callback, producing a single AAC-compressed M4A file in `~/Library/Application Support/NoteTaker/recordings/`. AAC compression reduces file sizes by ~15-20x compared to uncompressed WAV (~50-80 MB vs ~1 GB for a 58-minute meeting). Old recordings are automatically cleaned up based on a configurable retention period (default 28 days). During recording, audio buffers are also forwarded to a `StreamingTranscriber` that downsamples from 48kHz to 16kHz and runs WhisperKit every 10 seconds on a sliding 30-second window, producing a live transcript.
 
 **State management** is driven by a single `AppState` class with a `Phase` enum: idle -> recording (with live transcript segments) -> stopped -> transcribing -> transcribed -> summarizing -> summarized. Each phase transition drives the UI.
 

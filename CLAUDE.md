@@ -39,7 +39,9 @@ Think Granola, but fully local — the privacy guarantee is architectural, not c
 ## Key Technical Decisions
 
 - **ScreenCaptureKit for system audio** — replaced Core Audio Taps which delivered silent buffers in many configurations. Requires Screen Recording permission.
-- **Mic mixed into system audio** — AVAudioEngine captures mic into a thread-safe ring buffer (`MicRingBuffer`), mixed into SCStream callback before writing to file. Produces a single combined WAV with all voices. Don't use `captureMicrophone = true` on macOS 15+ — it didn't deliver audio reliably.
+- **Mic mixed into system audio** — AVAudioEngine captures mic into a thread-safe ring buffer (`MicRingBuffer`), mixed into SCStream callback before writing to file. Produces a single combined M4A with all voices. Don't use `captureMicrophone = true` on macOS 15+ — it didn't deliver audio reliably.
+- **AAC-compressed recordings** — Audio is written as AAC-compressed M4A (128kbps) instead of uncompressed WAV. ~15-20x smaller files (~50-80 MB vs ~1 GB for a 58-min meeting). `AVAudioFile` with `kAudioFormatMPEG4AAC` settings handles real-time compression from the float32 PCM buffers. WhisperKit reads M4A via AVFoundation.
+- **Recording retention cleanup** — `AudioCaptureService.cleanupOldRecordings(retentionDays:)` deletes recording directories older than the configured retention period (default 28 days, configurable in Settings). Runs on app launch from `AppState.init`.
 - **Native macOS (not Electron/Tauri)** — deeply coupled to Apple APIs (ScreenCaptureKit, WhisperKit, AVAudioEngine). Native gives best performance and smallest footprint.
 - **SQLite over Core Data** — lighter weight, simpler, no ORM overhead.
 - **Structured summary output** — LLM prompted for JSON with distinct fields (key points, decisions, action items), not unstructured text.
