@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let resultWindowController = ResultWindowController()
     private lazy var settingsWindowController = SettingsWindowController(appState: appState)
     private lazy var historyWindowController = HistoryWindowController(appState: appState)
+    private let meetingAppMonitor = MeetingAppMonitor()
     private var cancellables = Set<AnyCancellable>()
 
     /// Strong reference to prevent ARC from releasing the delegate
@@ -87,6 +88,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.historyWindowController.show()
             }
         }
+
+        // Wire up meeting app monitor for auto-record
+        meetingAppMonitor.onMeetingAppLaunched = { [weak self] appName in
+            self?.appState.handleMeetingAppLaunched(appName: appName)
+        }
+        meetingAppMonitor.onMeetingAppTerminated = { [weak self] appName in
+            self?.appState.handleMeetingAppTerminated(appName: appName)
+        }
+        meetingAppMonitor.start()
 
         // Auto-show popover on first launch for onboarding
         if appState.showingOnboarding {

@@ -89,6 +89,12 @@ final class AppState: ObservableObject {
         }
     }
 
+    @Published var autoRecordEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(autoRecordEnabled, forKey: "autoRecordEnabled")
+        }
+    }
+
     @Published var ollamaServerURL: String {
         didSet {
             UserDefaults.standard.set(ollamaServerURL, forKey: "ollamaServerURL")
@@ -115,6 +121,18 @@ final class AppState: ObservableObject {
 
     private var currentMeetingId: String?
     private var streamingTranscriber: StreamingTranscriber?
+    /// Tracks which app triggered an auto-started recording (nil for manual recordings).
+    private var autoRecordTriggerApp: String?
+    /// Timer for monitoring audio silence during auto-recordings.
+    private var silenceTimer: Timer?
+    /// How many consecutive seconds audio has been below the silence threshold.
+    private var consecutiveSilentSeconds: Int = 0
+    /// Grace period: don't check silence for the first N seconds of an auto-recording.
+    private static let silenceGracePeriodSeconds = 15
+    /// How many consecutive silent seconds before auto-stopping.
+    private static let silenceThresholdSeconds = 30
+    /// Audio level below this is considered silence (0..1 scale).
+    private static let silenceLevelThreshold: Float = 0.005
 
     init() {
         let mm = ModelManager()
@@ -133,6 +151,7 @@ final class AppState: ObservableObject {
         selectedMLXModel = UserDefaults.standard.string(forKey: "selectedMLXModel")
         selectedOllamaModel = UserDefaults.standard.string(forKey: "selectedOllamaModel")
         micEnabled = UserDefaults.standard.object(forKey: "micEnabled") as? Bool ?? true
+        autoRecordEnabled = UserDefaults.standard.bool(forKey: "autoRecordEnabled")
 
         // Show onboarding if never completed
         if !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding") {
@@ -199,6 +218,10 @@ final class AppState: ObservableObject {
     private let logger = Logger(subsystem: "com.incept5.NoteTaker", category: "AppState")
 
     func stopRecording() {
+        // Clear auto-record trigger so app termination won't try to stop again
+        stopSilenceMonitoring()
+        autoRecordTriggerApp = nil
+
         // Stop streaming transcriber
         let transcriber = streamingTranscriber
         streamingTranscriber?.stop()
@@ -356,10 +379,88 @@ final class AppState: ObservableObject {
         }
     }
 
+    // MARK: - Auto-Record
+
+    func handleMeetingAppLaunched(appName: String) {
+        guard autoRecordEnabled, case .idle = phase else { return }
+        logger.info("Auto-starting recording for \(appName, privacy: .public)")
+        autoRecordTriggerApp = appName
+        startRecording()
+        startSilenceMonitoring()
+    }
+
+    func handleMeetingAppTerminated(appName: String) {
+        guard autoRecordTriggerApp == appName else { return }
+        // Only stop if we're still recording
+        if case .recording = phase {
+            logger.info("Auto-stopping recording — \(appName, privacy: .public) terminated")
+            stopSilenceMonitoring()
+            autoRecordTriggerApp = nil
+            stopRecording()
+        } else {
+            stopSilenceMonitoring()
+            autoRecordTriggerApp = nil
+        }
+    }
+
+    /// Start a 1-second timer that monitors audio level during auto-recordings.
+    /// After a grace period, if audio stays silent for the threshold duration, auto-stops.
+    private func startSilenceMonitoring() {
+        consecutiveSilentSeconds = 0
+        // Use a negative counter to represent the grace period
+        // e.g. -15 means 15 seconds of grace remain
+        consecutiveSilentSeconds = -Self.silenceGracePeriodSeconds
+
+        silenceTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.checkSilence()
+            }
+        }
+    }
+
+    private func stopSilenceMonitoring() {
+        silenceTimer?.invalidate()
+        silenceTimer = nil
+        consecutiveSilentSeconds = 0
+    }
+
+    private func checkSilence() {
+        // Only monitor during auto-started recordings
+        guard autoRecordTriggerApp != nil, case .recording = phase else {
+            stopSilenceMonitoring()
+            return
+        }
+
+        let level = captureService.systemAudioLevel
+
+        if consecutiveSilentSeconds < 0 {
+            // Still in grace period — just count up
+            consecutiveSilentSeconds += 1
+            logger.debug("Silence monitor grace period: \(self.consecutiveSilentSeconds)s remaining")
+        } else if level < Self.silenceLevelThreshold {
+            consecutiveSilentSeconds += 1
+            logger.debug("Silence detected: \(self.consecutiveSilentSeconds)/\(Self.silenceThresholdSeconds)s (level: \(level))")
+
+            if consecutiveSilentSeconds >= Self.silenceThresholdSeconds {
+                logger.info("Auto-stopping recording — \(Self.silenceThresholdSeconds)s of silence detected")
+                stopSilenceMonitoring()
+                autoRecordTriggerApp = nil
+                stopRecording()
+            }
+        } else {
+            // Audio detected — reset counter
+            if consecutiveSilentSeconds > 0 {
+                logger.debug("Audio resumed, resetting silence counter (level: \(level))")
+            }
+            consecutiveSilentSeconds = 0
+        }
+    }
+
     func reset() {
         phase = .idle
         showingModelPicker = false
         currentMeetingId = nil
+        autoRecordTriggerApp = nil
         meetingStore.loadRecentMeetings()
     }
 

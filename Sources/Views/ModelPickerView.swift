@@ -61,6 +61,19 @@ struct ModelPickerView: View {
             if appState.micEnabled {
                 micDevicePicker
             }
+
+            Divider()
+
+            Toggle(isOn: $appState.autoRecordEnabled) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Auto-record when meeting starts")
+                        .font(.body)
+                    Text("Automatically starts recording when Zoom or Teams launches, and stops when the app quits.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .toggleStyle(.switch)
         }
     }
 
