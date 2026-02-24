@@ -74,6 +74,17 @@ This lets you run larger models (70B+) on a dedicated machine while keeping Note
 
 ## Usage
 
+### Auto-Record for Zoom & Teams
+
+NoteTaker can automatically start recording when Zoom or Microsoft Teams launches, and stop when the meeting ends — no manual intervention needed.
+
+1. Open **Settings** (gear icon) → **Audio Capture**
+2. Enable **"Auto-record when meeting starts"**
+
+When a monitored app launches, recording starts automatically. When the meeting ends (detected by 30 seconds of sustained audio silence), recording stops and the transcription/summarization pipeline kicks in. If the meeting app quits entirely, recording stops immediately.
+
+Auto-stop only applies to auto-started recordings — manually started recordings are never stopped automatically.
+
 ### Microphone Settings
 
 By default, microphone capture is **enabled** and uses the system default input device. Your mic audio is mixed into the system audio stream so all voices appear in the transcript.
@@ -132,6 +143,8 @@ AppState (Phase-driven state machine)
     +-- SummarizationService (MLX or Ollama)
     |
     +-- MeetingStore (SQLite via GRDB)
+    |
+    +-- MeetingAppMonitor (NSWorkspace launch/terminate detection)
 ```
 
 **Audio capture** uses ScreenCaptureKit for system audio (all apps) with microphone input mixed in via AVAudioEngine. Mic samples are captured into a thread-safe ring buffer and added to the system audio stream in the SCStream callback, producing a single combined WAV file in `~/Library/Application Support/NoteTaker/recordings/`. During recording, audio buffers are also forwarded to a `StreamingTranscriber` that downsamples from 48kHz to 16kHz and runs WhisperKit every 10 seconds on a sliding 30-second window, producing a live transcript.
@@ -178,7 +191,8 @@ Or open `NoteTaker.xcodeproj` in Xcode and build from there.
 
 ```
 Sources/
-  App/            AppState, AppDelegate (@main entry point)
+  App/            AppState, AppDelegate (@main entry point),
+                  MeetingAppMonitor
   Audio/          SystemAudioCapture (ScreenCaptureKit + mic mixing),
                   AudioCaptureService, AudioDeviceManager, AudioLevelMonitor,
                   AudioProcessDiscovery, CoreAudioUtils
