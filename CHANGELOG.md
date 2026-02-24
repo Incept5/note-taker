@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.6
+
+- **Auto-record for Zoom & Teams** — NoteTaker can now automatically start recording when Zoom or Microsoft Teams launches. Enable "Auto-record when meeting starts" in Settings under Audio Capture. Off by default.
+- **Silence-based meeting end detection** — When auto-recording, NoteTaker monitors audio levels and automatically stops recording after 30 seconds of continuous silence, triggering the transcription and summarization pipeline. A 15-second grace period at the start prevents false stops while the meeting connects.
+- **App quit fallback** — If the meeting app quits entirely (rather than just ending the meeting), recording stops immediately.
+- **Manual recordings unaffected** — Auto-stop only applies to auto-started recordings. Manually started recordings are never stopped automatically.
+
 ## 1.1.5
 
 - **Segmented transcript view** — Transcripts are now displayed as readable paragraphs broken every 10 seconds or at detected speaker changes, with timestamp pills and dividers. Replaces the previous wall of unbroken text.
