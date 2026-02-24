@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.7
+
+- **AAC-compressed audio recordings** — Recordings now use AAC compression (M4A) instead of uncompressed WAV. A 58-minute meeting produces ~50-80 MB instead of ~1 GB, roughly 15-20x smaller.
+- **Automatic recording cleanup** — Old recording directories are automatically deleted on launch. Default retention is 28 days.
+- **Configurable retention period** — Choose how long to keep audio files (7, 14, 28, 60, or 90 days) in Settings under Audio Capture.
+
 ## 1.1.6
 
 - **Auto-record for Zoom & Teams** — NoteTaker can now automatically start recording when Zoom or Microsoft Teams launches. Enable "Auto-record when meeting starts" in Settings under Audio Capture. Off by default.
