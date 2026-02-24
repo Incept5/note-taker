@@ -44,6 +44,7 @@ Think Granola, but fully local — the privacy guarantee is architectural, not c
 - **SQLite over Core Data** — lighter weight, simpler, no ORM overhead.
 - **Structured summary output** — LLM prompted for JSON with distinct fields (key points, decisions, action items), not unstructured text.
 - **Segmented transcript display** — `SegmentedTranscriptView` groups segments into 10-second paragraphs with timestamp pills and speaker change detection. When mic is enabled, system ("Others") and mic ("You") segments are interleaved chronologically with colour-coded labels via `interleavedSpeakerSegments()` on `MeetingTranscription`.
+- **Auto-record for meeting apps** — `MeetingAppMonitor` subscribes to `NSWorkspace` launch/terminate notifications for Zoom (`us.zoom.xos`) and Teams (`com.microsoft.teams`). On launch, auto-starts recording if enabled. Meeting end is detected via silence monitoring (30s continuous silence after 15s grace period) in `AppState`, with app termination as fallback. Manual recordings are never auto-stopped.
 - **No mobile** — iOS cannot tap into other apps' audio (sandboxing). A mobile version would be a fundamentally different product.
 - **App Sandbox disabled** — required for ScreenCaptureKit system audio capture.
 
