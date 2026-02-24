@@ -74,6 +74,26 @@ struct ModelPickerView: View {
                 }
             }
             .toggleStyle(.switch)
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Recording retention")
+                    .font(.body)
+
+                Picker("Keep recordings for", selection: $appState.recordingRetentionDays) {
+                    Text("7 days").tag(7)
+                    Text("14 days").tag(14)
+                    Text("28 days").tag(28)
+                    Text("60 days").tag(60)
+                    Text("90 days").tag(90)
+                }
+                .pickerStyle(.segmented)
+
+                Text("Audio files older than this are deleted on launch.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 

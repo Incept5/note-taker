@@ -95,6 +95,13 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Number of days to retain audio recording files. Older recordings are deleted on launch.
+    @Published var recordingRetentionDays: Int {
+        didSet {
+            UserDefaults.standard.set(recordingRetentionDays, forKey: "recordingRetentionDays")
+        }
+    }
+
     @Published var ollamaServerURL: String {
         didSet {
             UserDefaults.standard.set(ollamaServerURL, forKey: "ollamaServerURL")
@@ -152,6 +159,8 @@ final class AppState: ObservableObject {
         selectedOllamaModel = UserDefaults.standard.string(forKey: "selectedOllamaModel")
         micEnabled = UserDefaults.standard.object(forKey: "micEnabled") as? Bool ?? true
         autoRecordEnabled = UserDefaults.standard.bool(forKey: "autoRecordEnabled")
+        let savedRetention = UserDefaults.standard.integer(forKey: "recordingRetentionDays")
+        recordingRetentionDays = savedRetention > 0 ? savedRetention : 28
 
         // Show onboarding if never completed
         if !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding") {
@@ -163,6 +172,9 @@ final class AppState: ObservableObject {
         if mm.selectedModelName == nil || !knownIds.contains(mm.selectedModelName!) {
             mm.selectModel("large-v3")
         }
+
+        // Clean up recordings older than the retention period
+        captureService.cleanupOldRecordings(retentionDays: recordingRetentionDays)
     }
 
     func startRecording() {
@@ -525,7 +537,7 @@ final class AppState: ObservableObject {
         guard let latestDir = sorted.first else { return nil }
 
         return CapturedAudio(
-            systemAudioURL: latestDir.appendingPathComponent("system.wav"),
+            systemAudioURL: latestDir.appendingPathComponent("system.m4a"),
             microphoneURL: nil,
             directory: latestDir,
             startedAt: startedAt,

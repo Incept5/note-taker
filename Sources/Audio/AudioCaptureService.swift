@@ -30,7 +30,7 @@ final class AudioCaptureService: ObservableObject {
         let dir = try createOutputDirectory()
         self.outputDirectory = dir
 
-        let systemURL = dir.appendingPathComponent("system.wav")
+        let systemURL = dir.appendingPathComponent("system.m4a")
 
         // Start system audio recorder (ScreenCaptureKit) — captures all audio
         // including the local user's voice via meeting app mix
@@ -69,7 +69,7 @@ final class AudioCaptureService: ObservableObject {
         guard let dir = outputDirectory else { return nil }
 
         let result = CapturedAudio(
-            systemAudioURL: dir.appendingPathComponent("system.wav"),
+            systemAudioURL: dir.appendingPathComponent("system.m4a"),
             microphoneURL: nil,
             directory: dir,
             startedAt: startTime,
@@ -103,5 +103,39 @@ final class AudioCaptureService: ObservableObject {
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
         return dir
+    }
+
+    // MARK: - Cleanup
+
+    /// Removes recording directories older than the specified number of days.
+    func cleanupOldRecordings(retentionDays: Int) {
+        let fm = FileManager.default
+        let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let recordingsDir = appSupport
+            .appendingPathComponent("NoteTaker", isDirectory: true)
+            .appendingPathComponent("recordings", isDirectory: true)
+
+        guard let contents = try? fm.contentsOfDirectory(
+            at: recordingsDir,
+            includingPropertiesForKeys: [.creationDateKey],
+            options: .skipsHiddenFiles
+        ) else { return }
+
+        let cutoff = Calendar.current.date(byAdding: .day, value: -retentionDays, to: Date()) ?? Date()
+
+        for item in contents {
+            var isDir: ObjCBool = false
+            guard fm.fileExists(atPath: item.path, isDirectory: &isDir), isDir.boolValue else { continue }
+
+            let creationDate = (try? item.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
+            guard creationDate < cutoff else { continue }
+
+            do {
+                try fm.removeItem(at: item)
+                logger.info("Removed expired recording: \(item.lastPathComponent, privacy: .public)")
+            } catch {
+                logger.warning("Failed to remove recording \(item.lastPathComponent, privacy: .public): \(error, privacy: .public)")
+            }
+        }
     }
 }

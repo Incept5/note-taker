@@ -104,20 +104,20 @@ final class ScreenCaptureAudioRecorder: NSObject, @unchecked Sendable {
         )
         self.tapStreamDescription = desc
 
-        // Create the output file immediately with the known format
+        // Create the output file with AAC compression (~10-15x smaller than uncompressed WAV)
+        // Processing format is float32 non-interleaved (matching SCStream output).
+        // ExtAudioFile handles conversion to interleaved AAC internally.
         if let format = AVAudioFormat(streamDescription: &desc) {
             self.audioFormat = format
             do {
                 self.audioFile = try AVAudioFile(
                     forWriting: fileURL,
                     settings: [
-                        AVFormatIDKey: kAudioFormatLinearPCM,
+                        AVFormatIDKey: kAudioFormatMPEG4AAC,
                         AVSampleRateKey: format.sampleRate,
                         AVNumberOfChannelsKey: format.channelCount,
-                        AVLinearPCMBitDepthKey: 32,
-                        AVLinearPCMIsFloatKey: true,
-                        AVLinearPCMIsBigEndianKey: false,
-                        AVLinearPCMIsNonInterleaved: true,
+                        AVEncoderBitRateKey: 128_000,
+                        AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
                     ],
                     commonFormat: .pcmFormatFloat32,
                     interleaved: false
