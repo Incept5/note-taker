@@ -25,16 +25,16 @@ final class SummarizationService: ObservableObject {
         ollamaClient = OllamaClient(baseURL: url)
     }
 
-    func summarize(transcript: String, appName: String?, duration: TimeInterval) async throws -> MeetingSummary {
+    func summarize(transcript: String, appName: String?, duration: TimeInterval, participants: [String]? = nil) async throws -> MeetingSummary {
         switch backend {
         case .ollama:
-            return try await summarizeWithOllama(transcript: transcript, appName: appName, duration: duration)
+            return try await summarizeWithOllama(transcript: transcript, appName: appName, duration: duration, participants: participants)
         case .mlx:
-            return try await summarizeWithMLX(transcript: transcript, appName: appName, duration: duration)
+            return try await summarizeWithMLX(transcript: transcript, appName: appName, duration: duration, participants: participants)
         }
     }
 
-    private func summarizeWithOllama(transcript: String, appName: String?, duration: TimeInterval) async throws -> MeetingSummary {
+    private func summarizeWithOllama(transcript: String, appName: String?, duration: TimeInterval, participants: [String]? = nil) async throws -> MeetingSummary {
         let start = Date()
 
         guard let model = selectedModel else {
@@ -51,7 +51,7 @@ final class SummarizationService: ObservableObject {
         progress = 0.2
         progressText = "Summarizing with \(model)..."
 
-        let systemPrompt = buildSystemPrompt(appName: appName, duration: duration)
+        let systemPrompt = buildSystemPrompt(appName: appName, duration: duration, participants: participants)
 
         let messages: [[String: String]] = [
             ["role": "system", "content": systemPrompt],
@@ -77,7 +77,7 @@ final class SummarizationService: ObservableObject {
         return summary
     }
 
-    private func summarizeWithMLX(transcript: String, appName: String?, duration: TimeInterval) async throws -> MeetingSummary {
+    private func summarizeWithMLX(transcript: String, appName: String?, duration: TimeInterval, participants: [String]? = nil) async throws -> MeetingSummary {
         let start = Date()
 
         guard let modelId = selectedMLXModelId else {
@@ -96,7 +96,7 @@ final class SummarizationService: ObservableObject {
         progress = 0.2
         progressText = "Summarizing with MLX..."
 
-        let systemPrompt = buildSystemPrompt(appName: appName, duration: duration)
+        let systemPrompt = buildSystemPrompt(appName: appName, duration: duration, participants: participants)
 
         let response: String
         do {
@@ -122,13 +122,19 @@ final class SummarizationService: ObservableObject {
         try await ollamaClient.listModels()
     }
 
-    private func buildSystemPrompt(appName: String?, duration: TimeInterval) -> String {
+    private func buildSystemPrompt(appName: String?, duration: TimeInterval, participants: [String]? = nil) -> String {
         let durationMinutes = Int(duration / 60)
         let context = appName.map { "from \($0) " } ?? ""
+        let participantLine: String
+        if let participants, !participants.isEmpty {
+            participantLine = "\n\nThe meeting participants are: \(participants.joined(separator: ", ")). Use these names when attributing action items and contributions."
+        } else {
+            participantLine = ""
+        }
 
         return """
         You are an expert meeting analyst. You will receive a transcript \(context)\
-        of a meeting that lasted approximately \(durationMinutes) minutes.
+        of a meeting that lasted approximately \(durationMinutes) minutes.\(participantLine)
 
         Produce a thorough, detailed analysis of the entire meeting. Do NOT be brief — \
         capture the full substance of what was discussed. Your goal is that someone who \

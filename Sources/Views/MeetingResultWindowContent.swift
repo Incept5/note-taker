@@ -43,7 +43,7 @@ struct MeetingResultWindowContent: View {
             HStack(spacing: 8) {
                 Button("Copy Summary") {
                     NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(summary.markdownText, forType: .string)
+                    NSPasteboard.general.setString(summary.markdownText(), forType: .string)
                 }
 
                 Button("Copy Transcript") {

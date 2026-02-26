@@ -141,7 +141,7 @@ private struct HistoryWindowDetailView: View {
                     onCopy: {
                         if let summary = meeting.decodedSummary() {
                             NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(summary.markdownText, forType: .string)
+                            NSPasteboard.general.setString(summary.markdownText(participants: meeting.decodedParticipants()), forType: .string)
                             copiedSummary = true
                             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                                 copiedSummary = false

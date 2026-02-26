@@ -110,7 +110,7 @@ struct SummaryResultView: View {
             HStack(spacing: 8) {
                 Button("Copy") {
                     NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(summary.markdownText, forType: .string)
+                    NSPasteboard.general.setString(summary.markdownText(), forType: .string)
                 }
 
                 Button("Regenerate") {

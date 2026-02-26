@@ -32,6 +32,13 @@ struct MeetingDetailView: View {
                     }
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                    if let participants = meeting.decodedParticipants(), !participants.isEmpty {
+                        Text(participants.joined(separator: ", "))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
                 }
 
                 Spacer()
@@ -70,7 +77,7 @@ struct MeetingDetailView: View {
                     onCopy: {
                         if let summary = meeting.decodedSummary() {
                             NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(summary.markdownText, forType: .string)
+                            NSPasteboard.general.setString(summary.markdownText(participants: meeting.decodedParticipants()), forType: .string)
                             copiedSummary = true
                             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                                 copiedSummary = false

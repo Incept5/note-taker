@@ -16,8 +16,13 @@ struct ActionItem: Codable {
 }
 
 extension MeetingSummary {
-    var markdownText: String {
+    func markdownText(participants: [String]? = nil) -> String {
         var text = ""
+
+        if let participants, !participants.isEmpty {
+            text += "## Participants\n"
+            text += participants.joined(separator: ", ") + "\n\n"
+        }
 
         if !keyPoints.isEmpty {
             text += "## Key Points\n"

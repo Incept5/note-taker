@@ -126,7 +126,13 @@ final class AppState: ObservableObject {
     /// Callback for opening the history window (set by AppDelegate).
     var onOpenHistory: (() -> Void)?
 
+    let calendarService = CalendarService()
+    let googleAuthService = GoogleCalendarAuthService()
+
+    @Published var googleCalendarEmail: String?
+
     private var currentMeetingId: String?
+    private var currentMeetingParticipants: [String]?
     private var streamingTranscriber: StreamingTranscriber?
     /// Tracks which app triggered an auto-started recording (nil for manual recordings).
     private var autoRecordTriggerApp: String?
@@ -159,6 +165,7 @@ final class AppState: ObservableObject {
         selectedOllamaModel = UserDefaults.standard.string(forKey: "selectedOllamaModel")
         micEnabled = UserDefaults.standard.object(forKey: "micEnabled") as? Bool ?? true
         autoRecordEnabled = UserDefaults.standard.bool(forKey: "autoRecordEnabled")
+        googleCalendarEmail = googleAuthService.signedInEmail
         let savedRetention = UserDefaults.standard.integer(forKey: "recordingRetentionDays")
         recordingRetentionDays = savedRetention > 0 ? savedRetention : 28
 
@@ -197,13 +204,28 @@ final class AppState: ObservableObject {
                 phase = .recording(since: now, transcript: [])
 
                 // Create DB record
+                let appName = detectMeetingApp()
                 if let audio = buildCurrentAudio(startedAt: now) {
                     let record = try meetingStore.createMeeting(
                         startedAt: now,
-                        appName: detectMeetingApp(),
+                        appName: appName,
                         audio: audio
                     )
                     currentMeetingId = record.id
+
+                    // Query calendar for meeting participants (EventKit first, Google Calendar fallback)
+                    if let calendarMeeting = await calendarService.findCurrentMeetingWithFallback(
+                        around: now,
+                        appName: appName,
+                        googleAuthService: googleAuthService
+                    ) {
+                        currentMeetingParticipants = calendarMeeting.participants
+                        try? meetingStore.updateWithCalendarInfo(
+                            id: record.id,
+                            calendarTitle: calendarMeeting.title,
+                            participants: calendarMeeting.participants
+                        )
+                    }
                 }
 
                 // Load model and start streaming transcription
@@ -370,10 +392,17 @@ final class AppState: ObservableObject {
 
         Task {
             do {
+                // Load participants from current state or DB
+                let participants = currentMeetingParticipants ?? {
+                    guard let id = currentMeetingId else { return nil }
+                    return try? meetingStore.loadMeeting(id: id)?.decodedParticipants()
+                }()
+
                 let summary = try await summarizationService.summarize(
                     transcript: transcription.combinedText,
                     appName: nil,
-                    duration: audio.duration
+                    duration: audio.duration,
+                    participants: participants
                 )
                 phase = .summarized(audio, transcription, summary)
 
@@ -472,6 +501,7 @@ final class AppState: ObservableObject {
         phase = .idle
         showingModelPicker = false
         currentMeetingId = nil
+        currentMeetingParticipants = nil
         autoRecordTriggerApp = nil
         meetingStore.loadRecentMeetings()
     }

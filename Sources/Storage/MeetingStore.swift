@@ -76,6 +76,24 @@ final class MeetingStore: ObservableObject {
         loadRecentMeetings()
     }
 
+    func updateWithCalendarInfo(id: String, calendarTitle: String?, participants: [String]) throws {
+        let participantsJSON: String? = {
+            guard let data = try? JSONEncoder().encode(participants) else { return nil }
+            return String(data: data, encoding: .utf8)
+        }()
+
+        try dbQueue.write { db in
+            guard var record = try MeetingRecord.fetchOne(db, key: id) else {
+                throw StorageError.meetingNotFound(id)
+            }
+            record.calendarTitle = calendarTitle
+            record.participantsJSON = participantsJSON
+            try record.update(db)
+        }
+        logger.info("Updated meeting \(id) with calendar info")
+        loadRecentMeetings()
+    }
+
     func updateStatus(id: String, status: String) throws {
         try dbQueue.write { db in
             guard var record = try MeetingRecord.fetchOne(db, key: id) else {
@@ -110,6 +128,12 @@ final class MeetingStore: ObservableObject {
 
         logger.info("Deleted meeting \(id)")
         loadRecentMeetings()
+    }
+
+    func loadMeeting(id: String) throws -> MeetingRecord? {
+        try dbQueue.read { db in
+            try MeetingRecord.fetchOne(db, key: id)
+        }
     }
 
     func loadRecentMeetings(limit: Int = 50) {

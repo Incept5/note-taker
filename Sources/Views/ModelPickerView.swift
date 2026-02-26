@@ -25,6 +25,8 @@ struct ModelPickerView: View {
             VStack(alignment: .leading, spacing: 24) {
                 audioSection
                 Divider()
+                GoogleCalendarSettingsSection(appState: appState)
+                Divider()
                 summarizationSection
                 Divider()
                 whisperSection

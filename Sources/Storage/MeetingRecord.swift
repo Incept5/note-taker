@@ -18,13 +18,25 @@ struct MeetingRecord: Codable, FetchableRecord, MutablePersistableRecord, Identi
     var summaryJSON: String?
     var summarizationModelUsed: String?
     var summarizationDuration: Double?
+    var calendarTitle: String?
+    var participantsJSON: String?
     var status: String
     var createdAt: Date
 
     // MARK: - Factory
 
-    static func create(startedAt: Date, appName: String?, audio: CapturedAudio) -> MeetingRecord {
-        MeetingRecord(
+    static func create(
+        startedAt: Date,
+        appName: String?,
+        audio: CapturedAudio,
+        calendarTitle: String? = nil,
+        participants: [String]? = nil
+    ) -> MeetingRecord {
+        let participantsJSON: String? = participants.flatMap { names in
+            guard let data = try? JSONEncoder().encode(names) else { return nil }
+            return String(data: data, encoding: .utf8)
+        }
+        return MeetingRecord(
             id: UUID().uuidString,
             startedAt: startedAt,
             durationSeconds: nil,
@@ -39,6 +51,8 @@ struct MeetingRecord: Codable, FetchableRecord, MutablePersistableRecord, Identi
             summaryJSON: nil,
             summarizationModelUsed: nil,
             summarizationDuration: nil,
+            calendarTitle: calendarTitle,
+            participantsJSON: participantsJSON,
             status: "recording",
             createdAt: Date()
         )
@@ -50,6 +64,12 @@ struct MeetingRecord: Codable, FetchableRecord, MutablePersistableRecord, Identi
         guard let json = transcriptionJSON,
               let data = json.data(using: .utf8) else { return nil }
         return try? JSONDecoder().decode(MeetingTranscription.self, from: data)
+    }
+
+    func decodedParticipants() -> [String]? {
+        guard let json = participantsJSON,
+              let data = json.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode([String].self, from: data)
     }
 
     func decodedSummary() -> MeetingSummary? {

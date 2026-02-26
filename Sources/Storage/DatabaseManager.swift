@@ -62,6 +62,13 @@ final class DatabaseManager {
             }
         }
 
+        migrator.registerMigration("v2_add_calendar_fields") { db in
+            try db.alter(table: "meetings") { t in
+                t.add(column: "calendarTitle", .text)
+                t.add(column: "participantsJSON", .text)
+            }
+        }
+
         try migrator.migrate(dbQueue)
     }
 }

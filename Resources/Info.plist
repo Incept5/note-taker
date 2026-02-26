@@ -24,5 +24,7 @@
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>NoteTaker needs microphone access to capture your voice during meetings for transcription.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>NoteTaker uses calendar access to identify meeting participants for richer summaries.</string>
 </dict>
 </plist>
