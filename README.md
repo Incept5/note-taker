@@ -36,8 +36,9 @@ macOS will ask for two permissions:
 |---|---|
 | **Microphone** | Captures your voice during meetings |
 | **Screen Recording** | Required by macOS for ScreenCaptureKit to capture system audio (no video is recorded) |
+| **Calendars** (optional) | Identifies meeting participants from your calendar for richer summaries |
 
-Grant both, then restart NoteTaker if prompted.
+Grant the required permissions, then restart NoteTaker if prompted. Calendar access is optional and only requested when needed.
 
 ### Summarization Setup
 
@@ -104,6 +105,18 @@ Open **Settings** (gear icon) to:
 
 Your selection is remembered across restarts, and the device list updates automatically when you plug in or disconnect hardware.
 
+### Google Calendar Integration
+
+NoteTaker can connect to your Google Calendar to automatically identify meeting participants when you start recording. Participant names are included in the summary, helping the LLM attribute action items and contributions to specific people.
+
+1. Open **Settings** (gear icon) → **Google Calendar**
+2. Click **"Sign in with Google"**
+3. Authorize in your browser — you'll be redirected back to NoteTaker
+
+NoteTaker requests **read-only** access to calendar events. It checks for events around the time you start recording, matches the current meeting, and pulls in the participant list. Tokens are stored in your macOS Keychain.
+
+NoteTaker tries Apple Calendar (EventKit) first — if your Google Calendar is already synced via macOS System Settings, it works without signing in. The Google Calendar API is a fallback for when EventKit has no events.
+
 ### Recording a Meeting
 
 1. Click the NoteTaker icon in your menu bar
@@ -153,6 +166,10 @@ AppState (Phase-driven state machine)
     |
     +-- MeetingStore (SQLite via GRDB)
     |
+    +-- CalendarService (EventKit + Google Calendar API fallback)
+    |     +-- GoogleCalendarAuthService (OAuth 2.0 + PKCE)
+    |     +-- GoogleCalendarClient (Calendar Events API)
+    |
     +-- MeetingAppMonitor (NSWorkspace launch/terminate detection)
 ```
 
@@ -201,7 +218,7 @@ Or open `NoteTaker.xcodeproj` in Xcode and build from there.
 ```
 Sources/
   App/            AppState, AppDelegate (@main entry point),
-                  MeetingAppMonitor
+                  MeetingAppMonitor, CalendarService
   Audio/          SystemAudioCapture (ScreenCaptureKit + mic mixing),
                   AudioCaptureService, AudioDeviceManager, AudioLevelMonitor,
                   AudioProcessDiscovery, CoreAudioUtils
@@ -210,6 +227,8 @@ Sources/
   Summarization/  SummarizationService, MLXClient, MLXModelManager,
                   OllamaClient, MeetingSummary
   Storage/        DatabaseManager (GRDB), MeetingStore, MeetingRecord
+  GoogleCalendar/ GoogleCalendarConfig, GoogleCalendarAuthService,
+                  GoogleCalendarClient
   Models/         AudioProcess, CapturedAudio
   Views/          All SwiftUI views (popover, recording, transcription,
                   summary, history, settings)
@@ -264,7 +283,7 @@ See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for solutions to common issues, inc
 
 ## Privacy
 
-NoteTaker makes **zero network calls** for audio capture, transcription, and summarization (when using MLX) — everything runs entirely on-device. If you use Ollama on a remote server, the transcript text is sent to that server for summarization — but this is a machine you control on your own network, not a third-party cloud service. Audio files, transcripts, and summaries are stored locally in `~/Library/Application Support/NoteTaker/`. No telemetry, no analytics, no cloud sync.
+NoteTaker makes **zero network calls** for audio capture, transcription, and summarization (when using MLX) — everything runs entirely on-device. If you use Ollama on a remote server, the transcript text is sent to that server for summarization — but this is a machine you control on your own network, not a third-party cloud service. If you sign in with Google Calendar, NoteTaker makes read-only API calls to fetch event details around the time you start recording — participant names are stored locally and never sent elsewhere. Audio files, transcripts, and summaries are stored locally in `~/Library/Application Support/NoteTaker/`. No telemetry, no analytics, no cloud sync. See our [Privacy Policy](https://incept5.github.io/note-taker/privacy-policy) for full details.
 
 ## License
 
