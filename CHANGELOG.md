@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.8
+
+- **Google Calendar integration** — NoteTaker can now connect to your Google Calendar to automatically identify meeting participants when recording starts. Click "Sign in with Google" in Settings — no Google Cloud project setup required. Participant names are included in the LLM summarization prompt and displayed in meeting detail views.
+- **EventKit-first calendar lookup** — Tries Apple Calendar (EventKit) first for zero-cost participant detection when your Google Calendar is synced via macOS System Settings. Falls back to the Google Calendar API only when EventKit has no matching events.
+- **Participants in summaries** — The LLM uses participant names to attribute action items and contributions to specific people, producing more useful meeting notes.
+- **Privacy policy** — Published at [incept5.github.io/note-taker/privacy-policy](https://incept5.github.io/note-taker/privacy-policy).
+
 ## 1.1.7
 
 - **AAC-compressed audio recordings** — Recordings now use AAC compression (M4A) instead of uncompressed WAV. A 58-minute meeting produces ~50-80 MB instead of ~1 GB, roughly 15-20x smaller.
