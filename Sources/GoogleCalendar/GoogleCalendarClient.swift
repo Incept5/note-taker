@@ -37,7 +37,11 @@ struct GoogleCalendarClient {
     func fetchEvents(accessToken: String, around date: Date, windowMinutes: Int = 15) async throws -> [GoogleCalendarEvent] {
         let timeMin = date.addingTimeInterval(-Double(windowMinutes) * 60)
         let timeMax = date.addingTimeInterval(Double(windowMinutes) * 60)
+        return try await fetchEvents(accessToken: accessToken, from: timeMin, to: timeMax)
+    }
 
+    /// Fetch events from the user's primary calendar between explicit time bounds.
+    func fetchEvents(accessToken: String, from timeMin: Date, to timeMax: Date) async throws -> [GoogleCalendarEvent] {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
 

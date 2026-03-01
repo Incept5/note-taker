@@ -11,8 +11,9 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     }
 
     func show() {
-        // If already showing, bring to front
+        // If already created, bring to front
         if let existing = window {
+            NSApp.setActivationPolicy(.regular)
             existing.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return

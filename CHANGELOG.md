@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.9
+
+- **Calendar-driven auto-recording** — NoteTaker can now auto-start recording when a calendar event begins. A new polling service checks EventKit and Google Calendar every 60 seconds for events starting within the next 2 minutes. Enable "Auto-record from calendar" in Settings. Off by default.
+- **Calendar end timer** — Auto-stops recording 5 minutes after a calendar event's scheduled end time. Provides a reliable backstop for meeting end detection alongside silence monitoring.
+- **Improved silence detection** — Replaced the strict consecutive-seconds approach with a rolling 45-second window. Auto-stops when 85%+ of samples are silent, so brief system sounds (notifications, alert tones) no longer reset detection.
+- **Keychain password prompts fixed** — Switched Google Calendar token storage to the Data Protection keychain and cached tokens in memory. Eliminates repeated macOS Keychain password prompts on app rebuild or relaunch.
+- **Settings/History window fix** — Fixed a bug where clicking Settings or History from the menu bar had no effect after the window had been previously opened and closed.
+
 ## 1.1.8
 
 - **Google Calendar integration** — NoteTaker can now connect to your Google Calendar to automatically identify meeting participants when recording starts. Click "Sign in with Google" in Settings — no Google Cloud project setup required. Participant names are included in the LLM summarization prompt and displayed in meeting detail views.

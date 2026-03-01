@@ -20,6 +20,8 @@ struct MeetingRecord: Codable, FetchableRecord, MutablePersistableRecord, Identi
     var summarizationDuration: Double?
     var calendarTitle: String?
     var participantsJSON: String?
+    var calendarEventId: String?
+    var calendarEventEnd: Date?
     var status: String
     var createdAt: Date
 
@@ -30,7 +32,9 @@ struct MeetingRecord: Codable, FetchableRecord, MutablePersistableRecord, Identi
         appName: String?,
         audio: CapturedAudio,
         calendarTitle: String? = nil,
-        participants: [String]? = nil
+        participants: [String]? = nil,
+        calendarEventId: String? = nil,
+        calendarEventEnd: Date? = nil
     ) -> MeetingRecord {
         let participantsJSON: String? = participants.flatMap { names in
             guard let data = try? JSONEncoder().encode(names) else { return nil }
@@ -53,6 +57,8 @@ struct MeetingRecord: Codable, FetchableRecord, MutablePersistableRecord, Identi
             summarizationDuration: nil,
             calendarTitle: calendarTitle,
             participantsJSON: participantsJSON,
+            calendarEventId: calendarEventId,
+            calendarEventEnd: calendarEventEnd,
             status: "recording",
             createdAt: Date()
         )

@@ -76,7 +76,13 @@ final class MeetingStore: ObservableObject {
         loadRecentMeetings()
     }
 
-    func updateWithCalendarInfo(id: String, calendarTitle: String?, participants: [String]) throws {
+    func updateWithCalendarInfo(
+        id: String,
+        calendarTitle: String?,
+        participants: [String],
+        eventId: String? = nil,
+        eventEnd: Date? = nil
+    ) throws {
         let participantsJSON: String? = {
             guard let data = try? JSONEncoder().encode(participants) else { return nil }
             return String(data: data, encoding: .utf8)
@@ -88,6 +94,8 @@ final class MeetingStore: ObservableObject {
             }
             record.calendarTitle = calendarTitle
             record.participantsJSON = participantsJSON
+            if let eventId { record.calendarEventId = eventId }
+            if let eventEnd { record.calendarEventEnd = eventEnd }
             try record.update(db)
         }
         logger.info("Updated meeting \(id) with calendar info")

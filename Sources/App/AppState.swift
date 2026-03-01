@@ -95,6 +95,12 @@ final class AppState: ObservableObject {
         }
     }
 
+    @Published var calendarAutoRecordEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(calendarAutoRecordEnabled, forKey: "calendarAutoRecordEnabled")
+        }
+    }
+
     /// Number of days to retain audio recording files. Older recordings are deleted on launch.
     @Published var recordingRetentionDays: Int {
         didSet {
@@ -131,21 +137,49 @@ final class AppState: ObservableObject {
 
     @Published var googleCalendarEmail: String?
 
+    private enum AutoRecordTrigger {
+        case meetingApp(String)       // Zoom/Teams process launched
+        case calendarEvent(String)    // calendar event title
+    }
+
     private var currentMeetingId: String?
     private var currentMeetingParticipants: [String]?
+    private var currentMeetingCalendarEndTime: Date?
     private var streamingTranscriber: StreamingTranscriber?
-    /// Tracks which app triggered an auto-started recording (nil for manual recordings).
-    private var autoRecordTriggerApp: String?
+    /// Tracks what triggered an auto-started recording (nil for manual recordings).
+    private var autoRecordTrigger: AutoRecordTrigger?
     /// Timer for monitoring audio silence during auto-recordings.
     private var silenceTimer: Timer?
-    /// How many consecutive seconds audio has been below the silence threshold.
-    private var consecutiveSilentSeconds: Int = 0
+    /// Timer that fires when a calendar event's scheduled end time passes (+ grace period).
+    private var calendarEndTimer: Timer?
+    /// Rolling window of recent audio samples (true = silent, false = audible).
+    private var silenceWindow: [Bool] = []
+    /// Seconds elapsed since silence monitoring started (negative = grace period).
+    private var silenceMonitorElapsed: Int = 0
+    /// Timer for detecting meeting audio before starting a recording.
+    private var meetingDetectionTimer: Timer?
+    /// How many consecutive seconds of audio detected during meeting detection.
+    private var meetingAudioDetectedSeconds: Int = 0
+    /// Total seconds elapsed in meeting detection mode.
+    private var meetingDetectionElapsed: Int = 0
+    /// Set of calendar event identifiers already triggered, to avoid re-triggering.
+    private var triggeredCalendarEventIds: Set<String> = []
     /// Grace period: don't check silence for the first N seconds of an auto-recording.
     private static let silenceGracePeriodSeconds = 15
-    /// How many consecutive silent seconds before auto-stopping.
-    private static let silenceThresholdSeconds = 30
+    /// Rolling window size in seconds — auto-stop if mostly silent over this period.
+    private static let silenceWindowSize = 45
+    /// Fraction of samples in the window that must be silent to trigger auto-stop.
+    private static let silenceWindowThreshold = 0.85
     /// Audio level below this is considered silence (0..1 scale).
     private static let silenceLevelThreshold: Float = 0.005
+    /// Grace period after calendar event end before auto-stopping (seconds).
+    private static let calendarEndGracePeriodSeconds: TimeInterval = 5 * 60
+    /// How many consecutive seconds of audio needed to confirm a meeting has started.
+    private static let meetingAudioConfirmSeconds = 5
+    /// How long to wait for meeting audio before giving up (seconds).
+    private static let meetingDetectionTimeoutSeconds = 600  // 10 minutes
+    /// Audio level above this is considered meeting audio (0..1 scale).
+    private static let meetingAudioThreshold: Float = 0.01
 
     init() {
         let mm = ModelManager()
@@ -165,6 +199,8 @@ final class AppState: ObservableObject {
         selectedOllamaModel = UserDefaults.standard.string(forKey: "selectedOllamaModel")
         micEnabled = UserDefaults.standard.object(forKey: "micEnabled") as? Bool ?? true
         autoRecordEnabled = UserDefaults.standard.bool(forKey: "autoRecordEnabled")
+        calendarAutoRecordEnabled = UserDefaults.standard.bool(forKey: "calendarAutoRecordEnabled")
+        googleAuthService.loadCachedAuthState()
         googleCalendarEmail = googleAuthService.signedInEmail
         let savedRetention = UserDefaults.standard.integer(forKey: "recordingRetentionDays")
         recordingRetentionDays = savedRetention > 0 ? savedRetention : 28
@@ -220,11 +256,19 @@ final class AppState: ObservableObject {
                         googleAuthService: googleAuthService
                     ) {
                         currentMeetingParticipants = calendarMeeting.participants
+                        currentMeetingCalendarEndTime = calendarMeeting.end
                         try? meetingStore.updateWithCalendarInfo(
                             id: record.id,
                             calendarTitle: calendarMeeting.title,
-                            participants: calendarMeeting.participants
+                            participants: calendarMeeting.participants,
+                            eventId: calendarMeeting.eventIdentifier,
+                            eventEnd: calendarMeeting.end
                         )
+
+                        // If auto-triggered and no end timer yet, arm one from calendar end time
+                        if autoRecordTrigger != nil, calendarEndTimer == nil {
+                            armCalendarEndTimer(endTime: calendarMeeting.end)
+                        }
                     }
                 }
 
@@ -254,7 +298,7 @@ final class AppState: ObservableObject {
     func stopRecording() {
         // Clear auto-record trigger so app termination won't try to stop again
         stopSilenceMonitoring()
-        autoRecordTriggerApp = nil
+        autoRecordTrigger = nil
 
         // Stop streaming transcriber
         let transcriber = streamingTranscriber
@@ -425,32 +469,115 @@ final class AppState: ObservableObject {
     func handleMeetingAppLaunched(appName: String) {
         guard autoRecordEnabled, case .idle = phase else { return }
         logger.info("Auto-starting recording for \(appName, privacy: .public)")
-        autoRecordTriggerApp = appName
+        autoRecordTrigger = .meetingApp(appName)
         startRecording()
         startSilenceMonitoring()
     }
 
     func handleMeetingAppTerminated(appName: String) {
-        guard autoRecordTriggerApp == appName else { return }
+        guard case .meetingApp(let triggerApp) = autoRecordTrigger, triggerApp == appName else { return }
         // Only stop if we're still recording
         if case .recording = phase {
             logger.info("Auto-stopping recording — \(appName, privacy: .public) terminated")
             stopSilenceMonitoring()
-            autoRecordTriggerApp = nil
+            autoRecordTrigger = nil
             stopRecording()
         } else {
             stopSilenceMonitoring()
-            autoRecordTriggerApp = nil
+            autoRecordTrigger = nil
         }
     }
 
+    // MARK: - Meeting Audio Detection
+
+    /// Start lightweight audio monitoring to detect when a meeting actually begins.
+    private func startMeetingDetection() {
+        meetingAudioDetectedSeconds = 0
+
+        Task {
+            do {
+                try await captureService.startMonitoring()
+            } catch {
+                logger.warning("Failed to start audio monitoring: \(error.localizedDescription, privacy: .public)")
+                // Fall back to immediate recording
+                startRecording()
+                startSilenceMonitoring()
+                return
+            }
+
+            // Check audio levels every second
+            meetingDetectionTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.checkMeetingAudio()
+                }
+            }
+        }
+    }
+
+    private func stopMeetingDetection() {
+        meetingDetectionTimer?.invalidate()
+        meetingDetectionTimer = nil
+        meetingAudioDetectedSeconds = 0
+        meetingDetectionElapsed = 0
+        captureService.stopMonitoring()
+    }
+
+    private func checkMeetingAudio() {
+        guard autoRecordTrigger != nil, captureService.isMonitoring else {
+            stopMeetingDetection()
+            return
+        }
+
+        meetingDetectionElapsed += 1
+
+        // Timeout: give up after 10 minutes of no meeting
+        if meetingDetectionElapsed >= Self.meetingDetectionTimeoutSeconds {
+            logger.info("Meeting detection timed out after \(Self.meetingDetectionTimeoutSeconds)s — cancelling")
+            stopMeetingDetection()
+            autoRecordTrigger = nil
+            return
+        }
+
+        let level = captureService.systemAudioLevel
+
+        if level >= Self.meetingAudioThreshold {
+            meetingAudioDetectedSeconds += 1
+            logger.debug("Meeting audio detected: \(self.meetingAudioDetectedSeconds)/\(Self.meetingAudioConfirmSeconds)s (level: \(level))")
+
+            if meetingAudioDetectedSeconds >= Self.meetingAudioConfirmSeconds {
+                logger.info("Meeting confirmed — starting recording")
+                stopMeetingDetection()
+                startRecording()
+                startSilenceMonitoring()
+            }
+        } else {
+            if meetingAudioDetectedSeconds > 0 {
+                logger.debug("Meeting audio lost, resetting (level: \(level))")
+            }
+            meetingAudioDetectedSeconds = 0
+        }
+    }
+
+    func handleUpcomingCalendarMeeting(_ meeting: CalendarMeeting) {
+        guard calendarAutoRecordEnabled, case .idle = phase else { return }
+        // Dedup: don't re-trigger for the same event
+        guard !triggeredCalendarEventIds.contains(meeting.eventIdentifier) else { return }
+        triggeredCalendarEventIds.insert(meeting.eventIdentifier)
+
+        logger.info("Auto-starting recording for calendar event: \(meeting.title, privacy: .public)")
+        autoRecordTrigger = .calendarEvent(meeting.title)
+        currentMeetingParticipants = meeting.participants
+        currentMeetingCalendarEndTime = meeting.end
+        startRecording()
+        startSilenceMonitoring()
+        armCalendarEndTimer(endTime: meeting.end)
+    }
+
     /// Start a 1-second timer that monitors audio level during auto-recordings.
-    /// After a grace period, if audio stays silent for the threshold duration, auto-stops.
+    /// After a grace period, if audio is mostly silent over a rolling window, auto-stops.
     private func startSilenceMonitoring() {
-        consecutiveSilentSeconds = 0
-        // Use a negative counter to represent the grace period
-        // e.g. -15 means 15 seconds of grace remain
-        consecutiveSilentSeconds = -Self.silenceGracePeriodSeconds
+        silenceWindow = []
+        silenceMonitorElapsed = -Self.silenceGracePeriodSeconds
 
         silenceTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
@@ -462,38 +589,82 @@ final class AppState: ObservableObject {
     private func stopSilenceMonitoring() {
         silenceTimer?.invalidate()
         silenceTimer = nil
-        consecutiveSilentSeconds = 0
+        calendarEndTimer?.invalidate()
+        calendarEndTimer = nil
+        silenceWindow = []
+        silenceMonitorElapsed = 0
+    }
+
+    /// Schedule a one-shot timer to auto-stop recording after the calendar event's end time + grace period.
+    private func armCalendarEndTimer(endTime: Date) {
+        calendarEndTimer?.invalidate()
+        let fireDate = endTime.addingTimeInterval(Self.calendarEndGracePeriodSeconds)
+        let interval = fireDate.timeIntervalSinceNow
+
+        guard interval > 0 else {
+            // Event already past end + grace — don't arm
+            logger.info("Calendar event already past end+grace, not arming timer")
+            return
+        }
+
+        logger.info("Arming calendar end timer for \(Int(interval))s from now")
+        calendarEndTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.handleCalendarEndTimerFired()
+            }
+        }
+    }
+
+    private func handleCalendarEndTimerFired() {
+        calendarEndTimer = nil
+        guard autoRecordTrigger != nil, case .recording = phase else { return }
+        logger.info("Auto-stopping recording — calendar event end time + grace period reached")
+        stopSilenceMonitoring()
+        autoRecordTrigger = nil
+        stopRecording()
     }
 
     private func checkSilence() {
         // Only monitor during auto-started recordings
-        guard autoRecordTriggerApp != nil, case .recording = phase else {
+        guard autoRecordTrigger != nil, case .recording = phase else {
             stopSilenceMonitoring()
             return
         }
 
+        silenceMonitorElapsed += 1
+
+        // Grace period — don't evaluate yet
+        if silenceMonitorElapsed <= 0 {
+            logger.debug("Silence monitor grace period: \(-self.silenceMonitorElapsed)s remaining")
+            return
+        }
+
         let level = captureService.systemAudioLevel
+        let isSilent = level < Self.silenceLevelThreshold
 
-        if consecutiveSilentSeconds < 0 {
-            // Still in grace period — just count up
-            consecutiveSilentSeconds += 1
-            logger.debug("Silence monitor grace period: \(self.consecutiveSilentSeconds)s remaining")
-        } else if level < Self.silenceLevelThreshold {
-            consecutiveSilentSeconds += 1
-            logger.debug("Silence detected: \(self.consecutiveSilentSeconds)/\(Self.silenceThresholdSeconds)s (level: \(level))")
+        // Add to rolling window, keep at most windowSize entries
+        silenceWindow.append(isSilent)
+        if silenceWindow.count > Self.silenceWindowSize {
+            silenceWindow.removeFirst(silenceWindow.count - Self.silenceWindowSize)
+        }
 
-            if consecutiveSilentSeconds >= Self.silenceThresholdSeconds {
-                logger.info("Auto-stopping recording — \(Self.silenceThresholdSeconds)s of silence detected")
-                stopSilenceMonitoring()
-                autoRecordTriggerApp = nil
-                stopRecording()
-            }
-        } else {
-            // Audio detected — reset counter
-            if consecutiveSilentSeconds > 0 {
-                logger.debug("Audio resumed, resetting silence counter (level: \(level))")
-            }
-            consecutiveSilentSeconds = 0
+        // Need a full window before evaluating
+        guard silenceWindow.count >= Self.silenceWindowSize else {
+            let silentCount = silenceWindow.filter { $0 }.count
+            logger.debug("Silence window filling: \(silentCount)/\(self.silenceWindow.count) silent (level: \(level))")
+            return
+        }
+
+        let silentCount = silenceWindow.filter { $0 }.count
+        let silentFraction = Double(silentCount) / Double(Self.silenceWindowSize)
+
+        if silentFraction >= Self.silenceWindowThreshold {
+            logger.info("Auto-stopping recording — \(Int(silentFraction * 100))% silent over \(Self.silenceWindowSize)s window")
+            stopSilenceMonitoring()
+            autoRecordTrigger = nil
+            stopRecording()
+        } else if isSilent {
+            logger.debug("Silence window: \(silentCount)/\(Self.silenceWindowSize) silent (\(Int(silentFraction * 100))%, need \(Int(Self.silenceWindowThreshold * 100))%)")
         }
     }
 
@@ -502,7 +673,9 @@ final class AppState: ObservableObject {
         showingModelPicker = false
         currentMeetingId = nil
         currentMeetingParticipants = nil
-        autoRecordTriggerApp = nil
+        currentMeetingCalendarEndTime = nil
+        autoRecordTrigger = nil
+        stopMeetingDetection()
         meetingStore.loadRecentMeetings()
     }
 

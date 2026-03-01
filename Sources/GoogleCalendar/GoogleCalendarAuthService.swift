@@ -43,13 +43,23 @@ final class GoogleCalendarAuthService: ObservableObject {
     private static let expiresAtAccount = "expiresAt"
 
     @Published var isSigningIn = false
+    @Published private(set) var isSignedIn: Bool = false
+    @Published private(set) var signedInEmail: String? = nil
 
-    var isSignedIn: Bool {
-        keychainRead(account: Self.refreshTokenAccount) != nil
-    }
+    // In-memory token cache — loaded once from Keychain at startup, kept in sync on mutations
+    private var cachedAccessToken: String?
+    private var cachedRefreshToken: String?
+    private var cachedExpiresAt: Date?
 
-    var signedInEmail: String? {
-        keychainRead(account: Self.emailAccount)
+    /// Load all auth state from Keychain into memory. Call once at startup.
+    func loadCachedAuthState() {
+        cachedRefreshToken = keychainRead(account: Self.refreshTokenAccount)
+        cachedAccessToken = keychainRead(account: Self.accessTokenAccount)
+        signedInEmail = keychainRead(account: Self.emailAccount)
+        if let expiresAtStr = keychainRead(account: Self.expiresAtAccount) {
+            cachedExpiresAt = ISO8601DateFormatter().date(from: expiresAtStr)
+        }
+        isSignedIn = cachedRefreshToken != nil
     }
 
     // MARK: - Sign In
@@ -111,15 +121,22 @@ final class GoogleCalendarAuthService: ObservableObject {
             codeVerifier: codeVerifier
         )
 
-        // Store tokens in Keychain
+        // Store tokens in Keychain + memory cache
+        let expiresAt = Date().addingTimeInterval(TimeInterval(tokens.expiresIn))
         keychainWrite(account: Self.accessTokenAccount, value: tokens.accessToken)
         keychainWrite(account: Self.refreshTokenAccount, value: tokens.refreshToken)
-        let expiresAt = Date().addingTimeInterval(TimeInterval(tokens.expiresIn))
         keychainWrite(account: Self.expiresAtAccount, value: ISO8601DateFormatter().string(from: expiresAt))
+        cachedAccessToken = tokens.accessToken
+        cachedRefreshToken = tokens.refreshToken
+        cachedExpiresAt = expiresAt
 
         // Fetch user email
         let email = try await fetchUserEmail(accessToken: tokens.accessToken)
         keychainWrite(account: Self.emailAccount, value: email)
+
+        // Update cached state
+        isSignedIn = true
+        signedInEmail = email
 
         logger.info("Google Calendar sign-in complete for \(email, privacy: .public)")
         return email
@@ -132,21 +149,25 @@ final class GoogleCalendarAuthService: ObservableObject {
         keychainDelete(account: Self.refreshTokenAccount)
         keychainDelete(account: Self.emailAccount)
         keychainDelete(account: Self.expiresAtAccount)
+        cachedAccessToken = nil
+        cachedRefreshToken = nil
+        cachedExpiresAt = nil
+        isSignedIn = false
+        signedInEmail = nil
         logger.info("Google Calendar signed out")
     }
 
     // MARK: - Access Token
 
-    /// Returns a valid access token, refreshing if needed.
+    /// Returns a valid access token, refreshing if needed. Uses in-memory cache; only touches Keychain on refresh.
     func validAccessToken() async throws -> String {
-        guard let refreshToken = keychainRead(account: Self.refreshTokenAccount) else {
+        guard let refreshToken = cachedRefreshToken else {
             throw GoogleAuthError.noRefreshToken
         }
 
         // Check if current access token is still valid (with 60s buffer)
-        if let accessToken = keychainRead(account: Self.accessTokenAccount),
-           let expiresAtStr = keychainRead(account: Self.expiresAtAccount),
-           let expiresAt = ISO8601DateFormatter().date(from: expiresAtStr),
+        if let accessToken = cachedAccessToken,
+           let expiresAt = cachedExpiresAt,
            expiresAt.timeIntervalSinceNow > 60 {
             return accessToken
         }
@@ -155,12 +176,15 @@ final class GoogleCalendarAuthService: ObservableObject {
         logger.info("Refreshing Google access token")
         let tokens = try await refreshAccessToken(refreshToken: refreshToken)
 
-        keychainWrite(account: Self.accessTokenAccount, value: tokens.accessToken)
         let expiresAt = Date().addingTimeInterval(TimeInterval(tokens.expiresIn))
+        keychainWrite(account: Self.accessTokenAccount, value: tokens.accessToken)
         keychainWrite(account: Self.expiresAtAccount, value: ISO8601DateFormatter().string(from: expiresAt))
+        cachedAccessToken = tokens.accessToken
+        cachedExpiresAt = expiresAt
 
         if let newRefresh = tokens.refreshTokenIfPresent {
             keychainWrite(account: Self.refreshTokenAccount, value: newRefresh)
+            cachedRefreshToken = newRefresh
         }
 
         return tokens.accessToken
@@ -284,6 +308,7 @@ final class GoogleCalendarAuthService: ObservableObject {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: Self.keychainService,
             kSecAttrAccount as String: account,
+            kSecUseDataProtectionKeychain as String: true,
         ]
 
         // Delete existing item first
@@ -291,6 +316,7 @@ final class GoogleCalendarAuthService: ObservableObject {
 
         var addQuery = query
         addQuery[kSecValueData as String] = data
+        addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlocked
         let status = SecItemAdd(addQuery as CFDictionary, nil)
         if status != errSecSuccess {
             logger.warning("Keychain write failed for \(account): \(status)")
@@ -304,6 +330,7 @@ final class GoogleCalendarAuthService: ObservableObject {
             kSecAttrAccount as String: account,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecUseDataProtectionKeychain as String: true,
         ]
 
         var result: AnyObject?
@@ -317,6 +344,7 @@ final class GoogleCalendarAuthService: ObservableObject {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: Self.keychainService,
             kSecAttrAccount as String: account,
+            kSecUseDataProtectionKeychain as String: true,
         ]
         SecItemDelete(query as CFDictionary)
     }

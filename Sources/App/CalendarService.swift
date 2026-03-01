@@ -6,6 +6,8 @@ struct CalendarMeeting {
     let participants: [String]
     let organizer: String?
     let eventIdentifier: String
+    let start: Date
+    let end: Date
 }
 
 final class CalendarService {
@@ -78,7 +80,9 @@ final class CalendarService {
             title: best.title ?? "Untitled",
             participants: participants,
             organizer: organizer,
-            eventIdentifier: best.eventIdentifier
+            eventIdentifier: best.eventIdentifier,
+            start: best.startDate,
+            end: best.endDate
         )
     }
 
@@ -139,12 +143,85 @@ final class CalendarService {
                 title: best.summary,
                 participants: participants,
                 organizer: nil,
-                eventIdentifier: best.id
+                eventIdentifier: best.id,
+                start: best.start,
+                end: best.end
             )
         } catch {
             logger.warning("Google Calendar fallback failed: \(error.localizedDescription, privacy: .public)")
             return nil
         }
+    }
+
+    /// Fetch upcoming meetings starting within the next N minutes from both EventKit and Google Calendar.
+    @MainActor
+    func fetchUpcomingMeetings(withinMinutes: Int, googleAuthService: GoogleCalendarAuthService) async -> [CalendarMeeting] {
+        var results: [CalendarMeeting] = []
+        let now = Date()
+        let windowEnd = now.addingTimeInterval(Double(withinMinutes) * 60)
+
+        // EventKit
+        let hasAccess = await requestAccess()
+        if hasAccess {
+            let status = EKEventStore.authorizationStatus(for: .event)
+            if status == .fullAccess {
+                let predicate = store.predicateForEvents(withStart: now.addingTimeInterval(-60), end: windowEnd, calendars: nil)
+                let events = store.events(matching: predicate)
+
+                for event in events {
+                    // Include events starting within the window (or started within the last 60s)
+                    guard event.startDate >= now.addingTimeInterval(-60), event.startDate <= windowEnd else { continue }
+                    // Skip all-day events
+                    guard !event.isAllDay else { continue }
+
+                    let participants = extractParticipants(from: event)
+                    let organizer = event.organizer?.name ?? event.organizer?.url.absoluteString
+                    results.append(CalendarMeeting(
+                        title: event.title ?? "Untitled",
+                        participants: participants,
+                        organizer: organizer,
+                        eventIdentifier: event.eventIdentifier,
+                        start: event.startDate,
+                        end: event.endDate
+                    ))
+                }
+            }
+        }
+
+        // Google Calendar
+        if GoogleCalendarConfig.isConfigured, googleAuthService.isSignedIn {
+            do {
+                let accessToken = try await googleAuthService.validAccessToken()
+                let client = GoogleCalendarClient()
+                let events = try await client.fetchEvents(accessToken: accessToken, from: now.addingTimeInterval(-60), to: windowEnd)
+
+                for event in events {
+                    guard event.start >= now.addingTimeInterval(-60), event.start <= windowEnd else { continue }
+                    // Skip if we already have this event from EventKit (dedup by title + start time)
+                    let isDuplicate = results.contains { existing in
+                        existing.title == event.summary && abs(existing.start.timeIntervalSince(event.start)) < 60
+                    }
+                    guard !isDuplicate else { continue }
+
+                    let participants = event.attendees.compactMap { attendee -> String? in
+                        guard !attendee.isSelf else { return nil }
+                        return attendee.displayName ?? attendee.email
+                    }
+                    results.append(CalendarMeeting(
+                        title: event.summary,
+                        participants: participants,
+                        organizer: nil,
+                        eventIdentifier: event.id,
+                        start: event.start,
+                        end: event.end
+                    ))
+                }
+            } catch {
+                logger.warning("Google Calendar upcoming fetch failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+
+        return results
     }
 
     private func extractParticipants(from event: EKEvent) -> [String] {

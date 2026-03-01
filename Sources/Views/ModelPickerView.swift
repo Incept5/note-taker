@@ -25,7 +25,7 @@ struct ModelPickerView: View {
             VStack(alignment: .leading, spacing: 24) {
                 audioSection
                 Divider()
-                GoogleCalendarSettingsSection(appState: appState)
+                GoogleCalendarSettingsSection(appState: appState, googleAuthService: appState.googleAuthService)
                 Divider()
                 summarizationSection
                 Divider()
@@ -71,6 +71,17 @@ struct ModelPickerView: View {
                     Text("Auto-record when meeting starts")
                         .font(.body)
                     Text("Automatically starts recording when Zoom or Teams launches, and stops when the app quits.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .toggleStyle(.switch)
+
+            Toggle(isOn: $appState.calendarAutoRecordEnabled) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Auto-record from calendar")
+                        .font(.body)
+                    Text("Starts recording when a calendar event begins. Requires calendar access.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

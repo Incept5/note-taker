@@ -2,6 +2,7 @@ import SwiftUI
 
 struct GoogleCalendarSettingsSection: View {
     @ObservedObject var appState: AppState
+    @ObservedObject var googleAuthService: GoogleCalendarAuthService
     @State private var signInError: String?
 
     var body: some View {
@@ -13,7 +14,7 @@ struct GoogleCalendarSettingsSection: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            if appState.googleAuthService.isSignedIn {
+            if googleAuthService.isSignedIn {
                 signedInView
             } else if GoogleCalendarConfig.isConfigured {
                 signInButton
@@ -49,7 +50,7 @@ struct GoogleCalendarSettingsSection: View {
             }
             Spacer()
             Button("Sign Out") {
-                appState.googleAuthService.signOut()
+                googleAuthService.signOut()
                 appState.googleCalendarEmail = nil
                 signInError = nil
             }
@@ -65,7 +66,7 @@ struct GoogleCalendarSettingsSection: View {
     @ViewBuilder
     private var signInButton: some View {
         HStack {
-            if appState.googleAuthService.isSigningIn {
+            if googleAuthService.isSigningIn {
                 ProgressView()
                     .controlSize(.small)
                 Text("Waiting for authorization...")
@@ -87,7 +88,7 @@ struct GoogleCalendarSettingsSection: View {
         signInError = nil
         Task {
             do {
-                let email = try await appState.googleAuthService.signIn()
+                let email = try await googleAuthService.signIn()
                 appState.googleCalendarEmail = email
             } catch {
                 signInError = error.localizedDescription

@@ -86,10 +86,21 @@ final class ScreenCaptureAudioRecorder: NSObject, @unchecked Sendable {
     /// Raw audio buffer callback for streaming transcription. Called on the audio queue.
     var onAudioBuffer: ((AVAudioPCMBuffer) -> Void)?
 
+    /// Create a recorder that writes audio to a file.
     init(fileURL: URL) {
         self.fileURL = fileURL
         super.init()
+        setupFormat(createFile: true)
+    }
 
+    /// Create a monitor-only instance that tracks audio levels without writing to file.
+    init(monitorOnly: Bool) {
+        self.fileURL = URL(fileURLWithPath: "/dev/null")
+        super.init()
+        setupFormat(createFile: false)
+    }
+
+    private func setupFormat(createFile: Bool) {
         // Pre-populate with the known ScreenCaptureKit default format (48kHz stereo float32)
         var desc = AudioStreamBasicDescription(
             mSampleRate: 48000,
@@ -103,6 +114,13 @@ final class ScreenCaptureAudioRecorder: NSObject, @unchecked Sendable {
             mReserved: 0
         )
         self.tapStreamDescription = desc
+
+        guard createFile else {
+            if let format = AVAudioFormat(streamDescription: &desc) {
+                self.audioFormat = format
+            }
+            return
+        }
 
         // Create the output file with AAC compression (~10-15x smaller than uncompressed WAV)
         // Processing format is float32 non-interleaved (matching SCStream output).
@@ -452,7 +470,11 @@ extension ScreenCaptureAudioRecorder: SCStreamOutput {
             ringBuffer.mixInto(channelData: channels, channelCount: channelCount, frameCount: Int(buffer.frameLength))
         }
 
-        // Write to file
+        // Update audio level (always, even in monitor-only mode)
+        let level = AudioLevelMonitor.peakLevel(from: buffer)
+        onLevelUpdate?(level)
+
+        // Write to file (skipped in monitor-only mode when audioFile is nil)
         guard let file = audioFile else { return }
         do {
             try file.write(from: buffer)
@@ -463,10 +485,6 @@ extension ScreenCaptureAudioRecorder: SCStreamOutput {
 
         // Forward buffer for streaming transcription
         onAudioBuffer?(buffer)
-
-        // Update audio level
-        let level = AudioLevelMonitor.peakLevel(from: buffer)
-        onLevelUpdate?(level)
     }
 }
 

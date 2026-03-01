@@ -12,6 +12,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var settingsWindowController = SettingsWindowController(appState: appState)
     private lazy var historyWindowController = HistoryWindowController(appState: appState)
     private let meetingAppMonitor = MeetingAppMonitor()
+    private lazy var calendarPollingService = CalendarPollingService(
+        calendarService: appState.calendarService,
+        googleAuthService: appState.googleAuthService
+    )
     private var cancellables = Set<AnyCancellable>()
 
     /// Strong reference to prevent ARC from releasing the delegate
@@ -98,6 +102,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         meetingAppMonitor.start()
 
+        // Wire up calendar polling for auto-record
+        calendarPollingService.onUpcomingMeeting = { [weak self] meeting in
+            self?.appState.handleUpcomingCalendarMeeting(meeting)
+        }
+        updateCalendarPolling()
+
+        // Re-evaluate calendar polling when settings or phase change
+        appState.$calendarAutoRecordEnabled
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.updateCalendarPolling() }
+            .store(in: &cancellables)
+        appState.$phase
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.updateCalendarPolling() }
+            .store(in: &cancellables)
+
         // Auto-show popover on first launch for onboarding
         if appState.showingOnboarding {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
@@ -138,6 +158,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.appState.reset()
             }
         )
+    }
+
+    /// Start or stop calendar polling based on the current setting and app phase.
+    private func updateCalendarPolling() {
+        let shouldPoll = appState.calendarAutoRecordEnabled && appState.phase == .idle
+        if shouldPoll && !calendarPollingService.isRunning {
+            calendarPollingService.start()
+        } else if !shouldPoll && calendarPollingService.isRunning {
+            calendarPollingService.stop()
+        }
     }
 
     /// Reset app state if we're in a terminal phase (work is done, nothing in progress).

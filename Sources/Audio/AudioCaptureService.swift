@@ -15,14 +15,54 @@ final class AudioCaptureService: ObservableObject {
     var onAudioBuffer: ((AVAudioPCMBuffer) -> Void)?
 
     private var systemRecorder: ScreenCaptureAudioRecorder?
+    /// Lightweight recorder used only for audio level monitoring (no file writing).
+    private var monitorRecorder: ScreenCaptureAudioRecorder?
 
     private var recordingStartTime: Date?
     private var outputDirectory: URL?
+
+    /// Whether we're in monitor-only mode (detecting meeting audio, not recording).
+    private(set) var isMonitoring = false
+
+    // MARK: - Monitor-Only Mode (audio level detection without recording)
+
+    /// Start monitoring system audio levels without recording to file.
+    /// Used to detect when a meeting actually starts before committing to a full recording.
+    func startMonitoring() async throws {
+        guard !isRecording, !isMonitoring else { return }
+
+        logger.info("Starting audio level monitoring (no recording)")
+
+        let monitor = ScreenCaptureAudioRecorder(monitorOnly: true)
+        monitor.onLevelUpdate = { [weak self] level in
+            Task { @MainActor in
+                self?.systemAudioLevel = level
+            }
+        }
+        try await monitor.start(micEnabled: false)
+        self.monitorRecorder = monitor
+        isMonitoring = true
+    }
+
+    /// Stop monitor-only mode.
+    func stopMonitoring() {
+        guard isMonitoring else { return }
+        logger.info("Stopping audio level monitoring")
+        monitorRecorder?.stop()
+        monitorRecorder = nil
+        systemAudioLevel = 0
+        isMonitoring = false
+    }
 
     // MARK: - Public API
 
     func startCapture(micEnabled: Bool = true, micDeviceUID: String? = nil) async throws {
         guard !isRecording else { return }
+
+        // Stop monitor-only mode if active (transitioning to full recording)
+        if isMonitoring {
+            stopMonitoring()
+        }
 
         logger.info("Starting audio capture")
 

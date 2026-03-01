@@ -69,6 +69,13 @@ final class DatabaseManager {
             }
         }
 
+        migrator.registerMigration("v3_add_calendar_event_details") { db in
+            try db.alter(table: "meetings") { t in
+                t.add(column: "calendarEventId", .text)
+                t.add(column: "calendarEventEnd", .datetime)
+            }
+        }
+
         try migrator.migrate(dbQueue)
     }
 }
