@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.10
+
+- **Real-time live transcription** — Replaced the slow WhisperKit streaming (10-second chunked updates) with Apple's `SFSpeechRecognizer` for near-instant word-by-word transcription during recording. Text appears as people speak.
+- **WhisperKit for final transcript** — WhisperKit batch transcription still runs after recording stops to produce the high-quality stored transcript. The live text is display-only.
+- **Lower memory during recording** — WhisperKit no longer loads at recording start (~1.5GB RAM saved). It loads lazily when batch transcription begins after stop.
+- **Scrollable live transcript** — The recording view shows the latest ~15 lines of live text with a scrollbar to review earlier transcript during the meeting.
+- **On-device speech recognition** — New toggle in Settings (defaults to on) keeps all live transcription processing on-device for privacy.
+- **Graceful degradation** — If Speech Recognition permission is denied, recording works normally without live text. WhisperKit batch still runs.
+- **Fixed permission prompt loop** — Speech Recognition authorization is now requested lazily on first recording, not at app launch. Prevents a permission dialog loop when granting Screen Recording permission on fresh install.
+
 ## 1.1.9
 
 - **Calendar-driven auto-recording** — NoteTaker can now auto-start recording when a calendar event begins. A new polling service checks EventKit and Google Calendar every 60 seconds for events starting within the next 2 minutes. Enable "Auto-record from calendar" in Settings. Off by default.
