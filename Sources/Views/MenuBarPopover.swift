@@ -12,7 +12,7 @@ struct MenuBarPopover: View {
                 VStack(spacing: 0) {
                     mainContent
                 }
-                .frame(width: 320)
+                .frame(width: 340)
             }
         }
     }
@@ -57,8 +57,8 @@ struct MenuBarPopover: View {
             case .idle:
                 ReadyView(appState: appState)
 
-            case .recording(let since, let transcript):
-                RecordingView(appState: appState, startedAt: since, transcript: transcript)
+            case .recording(let since, let liveText):
+                RecordingView(appState: appState, startedAt: since, liveText: liveText)
 
             case .stopped(let audio):
                 stoppedView(audio)

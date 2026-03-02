@@ -8,7 +8,7 @@ import OSLog
 final class AppState: ObservableObject {
     enum Phase: Equatable {
         case idle
-        case recording(since: Date, transcript: [TranscriptSegment])
+        case recording(since: Date, liveText: String)
         case stopped(CapturedAudio)
         case transcribing(CapturedAudio, progress: Double)
         case transcribed(CapturedAudio, MeetingTranscription)
@@ -20,7 +20,7 @@ final class AppState: ObservableObject {
             switch (lhs, rhs) {
             case (.idle, .idle): true
             case (.recording(let a, let ta), .recording(let b, let tb)):
-                a == b && ta.count == tb.count
+                a == b && ta == tb
             case (.stopped(let a), .stopped(let b)): a.directory == b.directory
             case (.transcribing(let a, _), .transcribing(let b, _)): a.directory == b.directory
             case (.transcribed(let a, _), .transcribed(let b, _)): a.directory == b.directory
@@ -108,6 +108,12 @@ final class AppState: ObservableObject {
         }
     }
 
+    @Published var speechRecognitionOnDeviceOnly: Bool {
+        didSet {
+            UserDefaults.standard.set(speechRecognitionOnDeviceOnly, forKey: "speechRecognitionOnDeviceOnly")
+        }
+    }
+
     @Published var ollamaServerURL: String {
         didSet {
             UserDefaults.standard.set(ollamaServerURL, forKey: "ollamaServerURL")
@@ -145,7 +151,7 @@ final class AppState: ObservableObject {
     private var currentMeetingId: String?
     private var currentMeetingParticipants: [String]?
     private var currentMeetingCalendarEndTime: Date?
-    private var streamingTranscriber: StreamingTranscriber?
+    private var speechTranscriber: SpeechStreamingTranscriber?
     /// Tracks what triggered an auto-started recording (nil for manual recordings).
     private var autoRecordTrigger: AutoRecordTrigger?
     /// Timer for monitoring audio silence during auto-recordings.
@@ -204,6 +210,7 @@ final class AppState: ObservableObject {
         googleCalendarEmail = googleAuthService.signedInEmail
         let savedRetention = UserDefaults.standard.integer(forKey: "recordingRetentionDays")
         recordingRetentionDays = savedRetention > 0 ? savedRetention : 28
+        speechRecognitionOnDeviceOnly = UserDefaults.standard.object(forKey: "speechRecognitionOnDeviceOnly") as? Bool ?? true
 
         // Show onboarding if never completed
         if !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding") {
@@ -223,13 +230,26 @@ final class AppState: ObservableObject {
     func startRecording() {
         Task {
             do {
-                // Set up streaming transcriber before starting capture
-                let transcriber = StreamingTranscriber(modelManager: modelManager)
-                self.streamingTranscriber = transcriber
+                // Set up SFSpeech live transcriber — request authorization lazily on first use
+                let transcriber: SpeechStreamingTranscriber?
+                var speechStatus = SpeechStreamingTranscriber.authorizationStatus
+                if speechStatus == .notDetermined {
+                    speechStatus = await SpeechStreamingTranscriber.requestAuthorization()
+                }
+                if speechStatus == .authorized {
+                    let t = SpeechStreamingTranscriber(onDeviceOnly: speechRecognitionOnDeviceOnly)
+                    self.speechTranscriber = t
+                    transcriber = t
+                } else {
+                    logger.info("SFSpeech not authorized (\(speechStatus.rawValue)) — recording without live text")
+                    transcriber = nil
+                }
 
-                // Wire audio buffer forwarding
-                captureService.onAudioBuffer = { [weak transcriber] buffer in
-                    transcriber?.appendBuffer(buffer)
+                // Wire audio buffer forwarding to SFSpeech
+                if let transcriber {
+                    captureService.onAudioBuffer = { [weak transcriber] buffer in
+                        transcriber?.appendBuffer(buffer)
+                    }
                 }
 
                 try await captureService.startCapture(
@@ -237,7 +257,7 @@ final class AppState: ObservableObject {
                     micDeviceUID: micEnabled ? audioDeviceManager.selectedInputDeviceUID : nil
                 )
                 let now = Date()
-                phase = .recording(since: now, transcript: [])
+                phase = .recording(since: now, liveText: "")
 
                 // Create DB record
                 let appName = detectMeetingApp()
@@ -272,20 +292,15 @@ final class AppState: ObservableObject {
                     }
                 }
 
-                // Load model and start streaming transcription
-                transcriber.onSegmentsUpdated = { [weak self] segments in
-                    guard let self else { return }
-                    if case .recording(let since, _) = self.phase {
-                        self.phase = .recording(since: since, transcript: segments)
+                // Wire live text updates and start SFSpeech
+                if let transcriber {
+                    transcriber.onTextUpdated = { [weak self] text in
+                        guard let self else { return }
+                        if case .recording(let since, _) = self.phase {
+                            self.phase = .recording(since: since, liveText: text)
+                        }
                     }
-                }
-
-                do {
-                    try await transcriber.loadModel()
                     transcriber.start()
-                } catch {
-                    // Non-fatal: streaming won't work but recording continues
-                    logger.warning("Streaming transcription unavailable: \(error, privacy: .public)")
                 }
             } catch {
                 phase = .error(error.localizedDescription)
@@ -300,9 +315,9 @@ final class AppState: ObservableObject {
         stopSilenceMonitoring()
         autoRecordTrigger = nil
 
-        // Stop streaming transcriber
-        let transcriber = streamingTranscriber
-        streamingTranscriber?.stop()
+        // Stop SFSpeech live transcriber
+        speechTranscriber?.stop()
+        speechTranscriber = nil
         captureService.onAudioBuffer = nil
 
         if let result = captureService.stopCapture() {
@@ -313,21 +328,11 @@ final class AppState: ObservableObject {
                 try? meetingStore.updateWithRecordingComplete(id: id, duration: result.duration)
             }
 
-            // If we have streaming segments, use them instead of re-transcribing system audio
-            if let transcriber, !transcriber.segments.isEmpty {
-                startTranscriptionWithStreamingSegments(
-                    audio: result,
-                    streamingTranscript: transcriber.timestampedTranscript
-                )
-            } else {
-                // Fallback: full batch transcription
-                startTranscription(audio: result)
-            }
+            // Always run WhisperKit batch transcription for the final stored transcript
+            startTranscription(audio: result)
         } else {
             phase = .idle
         }
-
-        streamingTranscriber = nil
     }
 
     func startTranscription(audio: CapturedAudio) {

@@ -3,7 +3,7 @@ import SwiftUI
 struct RecordingView: View {
     @ObservedObject var appState: AppState
     let startedAt: Date
-    let transcript: [TranscriptSegment]
+    let liveText: String
 
     @State private var pulseAnimation = false
 
@@ -44,9 +44,9 @@ struct RecordingView: View {
             )
             .padding(.horizontal)
 
-            // Live transcript
-            if !transcript.isEmpty {
-                LiveTranscriptView(segments: transcript)
+            // Live text from SFSpeech
+            if !liveText.isEmpty {
+                LiveTextView(text: liveText)
             }
 
             // Stop button
@@ -67,48 +67,40 @@ struct RecordingView: View {
     }
 }
 
-// MARK: - LiveTranscriptView
+// MARK: - LiveTextView
 
-private struct LiveTranscriptView: View {
-    let segments: [TranscriptSegment]
+private struct LiveTextView: View {
+    let text: String
+
+    /// ~15 lines of .caption text at default line height (~14pt * 15 ≈ 210pt)
+    private static let visibleHeight: CGFloat = 230
 
     var body: some View {
         ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 4) {
-                    ForEach(Array(segments.enumerated()), id: \.offset) { index, segment in
-                        HStack(alignment: .top, spacing: 6) {
-                            Text(formatTime(segment.startTime))
-                                .font(.system(.caption2, design: .monospaced))
-                                .foregroundStyle(.tertiary)
-                                .frame(width: 36, alignment: .trailing)
+            ScrollView(.vertical, showsIndicators: true) {
+                Text(text)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal)
+                    .padding(.vertical, 8)
+                    .id("liveText")
 
-                            Text(segment.text.trimmingCharacters(in: .whitespacesAndNewlines))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        .id(index)
-                    }
-                }
-                .padding(.horizontal)
+                // Invisible anchor at the very bottom
+                Color.clear
+                    .frame(height: 1)
+                    .id("bottom")
             }
-            .frame(maxHeight: 120)
+            .frame(height: Self.visibleHeight)
             .background(Color.primary.opacity(0.03))
             .clipShape(RoundedRectangle(cornerRadius: 6))
             .padding(.horizontal)
-            .onChange(of: segments.count) { _ in
+            .onChange(of: text) { _ in
                 withAnimation {
-                    proxy.scrollTo(segments.count - 1, anchor: .bottom)
+                    proxy.scrollTo("bottom", anchor: .bottom)
                 }
             }
         }
-    }
-
-    private func formatTime(_ seconds: TimeInterval) -> String {
-        let m = Int(seconds) / 60
-        let s = Int(seconds) % 60
-        return String(format: "%d:%02d", m, s)
     }
 }
 

@@ -26,5 +26,7 @@
 	<string>NoteTaker uses calendar access to identify meeting participants for richer summaries.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>NoteTaker needs microphone access to capture your voice during meetings for transcription.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>NoteTaker uses speech recognition to show live transcription during recording.</string>
 </dict>
 </plist>

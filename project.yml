@@ -48,6 +48,8 @@ targets:
         product: MLXLLM
       - framework: EventKit.framework
         embed: false
+      - framework: Speech.framework
+        embed: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.incept5.NoteTaker

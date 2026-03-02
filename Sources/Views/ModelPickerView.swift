@@ -90,6 +90,19 @@ struct ModelPickerView: View {
 
             Divider()
 
+            Toggle(isOn: $appState.speechRecognitionOnDeviceOnly) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("On-device speech recognition only")
+                        .font(.body)
+                    Text("Live transcript uses Apple Speech Recognition. On-device keeps audio private but may be less accurate.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .toggleStyle(.switch)
+
+            Divider()
+
             VStack(alignment: .leading, spacing: 6) {
                 Text("Recording retention")
                     .font(.body)
