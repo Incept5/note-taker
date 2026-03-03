@@ -152,6 +152,19 @@ final class AppState: ObservableObject {
     private var currentMeetingParticipants: [String]?
     private var currentMeetingCalendarEndTime: Date?
     private var speechTranscriber: SpeechStreamingTranscriber?
+    /// Append-only transcript buffer built during recording. Each entry is a chunk of text
+    /// with a timestamp, committed whenever we detect SFSpeech text shrinking (session reset)
+    /// or at recording stop. Text only grows — never deleted, never overwritten.
+    private var liveTranscriptSegments: [TranscriptSegment] = []
+    /// Text from the current SFSpeech "window" — committed to liveTranscriptSegments when
+    /// we detect a text shrink (SFSpeech reset) or when recording stops.
+    private var currentChunkText: String = ""
+    /// Length of text from the previous callback — used to detect shrinks.
+    private var lastCallbackTextLength: Int = 0
+    /// Wall-clock time when the current chunk started.
+    private var currentChunkStartDate: Date = .now
+    /// When the current recording started.
+    private var liveTextRecordingStart: Date = .now
     /// Tracks what triggered an auto-started recording (nil for manual recordings).
     private var autoRecordTrigger: AutoRecordTrigger?
     /// Timer for monitoring audio silence during auto-recordings.
@@ -259,6 +272,13 @@ final class AppState: ObservableObject {
                 let now = Date()
                 phase = .recording(since: now, liveText: "")
 
+                // Reset live transcript buffer
+                liveTranscriptSegments = []
+                currentChunkText = ""
+                lastCallbackTextLength = 0
+                currentChunkStartDate = now
+                liveTextRecordingStart = now
+
                 // Create DB record
                 let appName = detectMeetingApp()
                 if let audio = buildCurrentAudio(startedAt: now) {
@@ -296,9 +316,7 @@ final class AppState: ObservableObject {
                 if let transcriber {
                     transcriber.onTextUpdated = { [weak self] text in
                         guard let self else { return }
-                        if case .recording(let since, _) = self.phase {
-                            self.phase = .recording(since: since, liveText: text)
-                        }
+                        self.bufferLiveText(text)
                     }
                     transcriber.start()
                 }
@@ -315,6 +333,9 @@ final class AppState: ObservableObject {
         stopSilenceMonitoring()
         autoRecordTrigger = nil
 
+        // Commit whatever's in the current chunk before we destroy anything
+        commitCurrentChunk()
+
         // Stop SFSpeech live transcriber
         speechTranscriber?.stop()
         speechTranscriber = nil
@@ -328,8 +349,24 @@ final class AppState: ObservableObject {
                 try? meetingStore.updateWithRecordingComplete(id: id, duration: result.duration)
             }
 
-            // Always run WhisperKit batch transcription for the final stored transcript
-            startTranscription(audio: result)
+            // Use live transcript buffer if we have segments, otherwise WhisperKit fallback
+            if !liveTranscriptSegments.isEmpty {
+                // Fix up the last segment's endTime to match actual duration
+                let lastIdx = liveTranscriptSegments.count - 1
+                liveTranscriptSegments[lastIdx] = TranscriptSegment(
+                    text: liveTranscriptSegments[lastIdx].text,
+                    startTime: liveTranscriptSegments[lastIdx].startTime,
+                    endTime: result.duration
+                )
+
+                let fullText = liveTranscriptSegments.map(\.text).joined(separator: " ")
+                let transcript = TimestampedTranscript(segments: liveTranscriptSegments, fullText: fullText)
+                logger.info("Using live transcript buffer: \(self.liveTranscriptSegments.count) segments, \(fullText.count) chars — skipping WhisperKit")
+                startTranscriptionWithStreamingSegments(audio: result, streamingTranscript: transcript)
+            } else {
+                logger.info("No live transcript — falling back to WhisperKit batch transcription")
+                startTranscription(audio: result)
+            }
         } else {
             phase = .idle
         }
@@ -679,6 +716,9 @@ final class AppState: ObservableObject {
         currentMeetingId = nil
         currentMeetingParticipants = nil
         currentMeetingCalendarEndTime = nil
+        liveTranscriptSegments = []
+        currentChunkText = ""
+        lastCallbackTextLength = 0
         autoRecordTrigger = nil
         stopMeetingDetection()
         meetingStore.loadRecentMeetings()
@@ -717,6 +757,61 @@ final class AppState: ObservableObject {
         }
 
         return nil
+    }
+
+    // MARK: - Live Transcript Buffer
+
+    /// Called on every SFSpeech text update. Detects when text shrinks (session reset)
+    /// and commits the previous chunk as a timestamped segment. Only appends, never deletes.
+    private func bufferLiveText(_ text: String) {
+        let now = Date.now
+
+        // Text shrank → SFSpeech reset internally or session restarted.
+        // Commit what we had as a finished segment.
+        if text.count < lastCallbackTextLength {
+            commitCurrentChunk()
+            currentChunkStartDate = now
+        }
+
+        // Always store the latest text for the current chunk
+        currentChunkText = text
+        lastCallbackTextLength = text.count
+
+        // Build the full display text from all committed segments + current chunk
+        let displayText = buildFullText()
+        if case .recording(let since, _) = self.phase {
+            self.phase = .recording(since: since, liveText: displayText)
+        }
+    }
+
+    /// Commit currentChunkText as a timestamped segment. No-op if empty.
+    private func commitCurrentChunk() {
+        let trimmed = currentChunkText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        let startTime = currentChunkStartDate.timeIntervalSince(liveTextRecordingStart)
+        let endTime = Date.now.timeIntervalSince(liveTextRecordingStart)
+
+        liveTranscriptSegments.append(TranscriptSegment(
+            text: trimmed,
+            startTime: max(0, startTime),
+            endTime: max(startTime + 0.1, endTime)
+        ))
+
+        logger.info("Committed transcript chunk: \(trimmed.count) chars at \(String(format: "%.1f", startTime))s (total segments: \(self.liveTranscriptSegments.count))")
+
+        currentChunkText = ""
+        lastCallbackTextLength = 0
+    }
+
+    /// Full text from all committed segments + current chunk.
+    private func buildFullText() -> String {
+        var parts = liveTranscriptSegments.map(\.text)
+        let current = currentChunkText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !current.isEmpty {
+            parts.append(current)
+        }
+        return parts.joined(separator: " ")
     }
 
     /// Build a minimal CapturedAudio for the DB record at recording start.

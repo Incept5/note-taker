@@ -23,6 +23,11 @@ struct MenuBarPopover: View {
             HStack {
                 Text("NoteTaker")
                     .font(.headline)
+                if let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String {
+                    Text("v\(version)")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
                 Spacer()
 
                 Button(action: { appState.onOpenHistory?() }) {

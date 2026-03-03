@@ -23,7 +23,6 @@ private final class AtomicReference<T>: @unchecked Sendable {
 }
 
 /// Wraps `SFSpeechRecognizer` for near-instant live transcription during recording.
-/// Text is display-only — the final stored transcript comes from WhisperKit batch.
 ///
 /// Session restart logic handles Apple's ~60-second recognition limit (error 209)
 /// by accumulating confirmed text in `textBuffer` and seamlessly starting a new

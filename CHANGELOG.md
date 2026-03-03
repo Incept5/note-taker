@@ -1,9 +1,16 @@
 # Changelog
 
+## 1.1.11
+
+- **Instant transcription** — Transcripts are now available immediately when recording stops. The live SFSpeech text captured during recording is used directly, eliminating the long WhisperKit batch processing wait. WhisperKit is retained as an automatic fallback if SFSpeech was unavailable.
+- **No more truncated transcripts** — Live text is accumulated into an append-only buffer of timestamped segments with session-reset detection. When SFSpeech's ~60-second recognition window expires, the current chunk is committed before a new session starts, so no text is ever lost.
+- **Mic echo cancellation** — Enabled Apple's built-in voice processing (AEC) on the microphone input. Previously, the mic picked up speaker output that was already in the system audio capture, causing voices to appear twice in recordings. Ducking is disabled so system audio volume stays normal during recording.
+- **Version number in menu bar** — The app version is now shown in the popover header next to the NoteTaker title.
+
 ## 1.1.10
 
 - **Real-time live transcription** — Replaced the slow WhisperKit streaming (10-second chunked updates) with Apple's `SFSpeechRecognizer` for near-instant word-by-word transcription during recording. Text appears as people speak.
-- **WhisperKit for final transcript** — WhisperKit batch transcription still runs after recording stops to produce the high-quality stored transcript. The live text is display-only.
+- **WhisperKit for final transcript** — WhisperKit batch transcription still runs after recording stops to produce the high-quality stored transcript.
 - **Lower memory during recording** — WhisperKit no longer loads at recording start (~1.5GB RAM saved). It loads lazily when batch transcription begins after stop.
 - **Scrollable live transcript** — The recording view shows the latest ~15 lines of live text with a scrollbar to review earlier transcript during the meeting.
 - **On-device speech recognition** — New toggle in Settings (defaults to on) keeps all live transcription processing on-device for privacy.

@@ -240,6 +240,23 @@ final class ScreenCaptureAudioRecorder: NSObject, @unchecked Sendable {
         }
 
         let inputNode = engine.inputNode
+
+        // Enable Apple's built-in voice processing (AEC + noise suppression + AGC).
+        // This uses the system speaker output as a reference signal to cancel echo
+        // from the mic picking up system audio that's already in the SCStream capture.
+        if #available(macOS 14.0, *) {
+            do {
+                try inputNode.setVoiceProcessingEnabled(true)
+                // Disable ducking — voice processing reduces system audio volume by default,
+                // which lowers both speaker output and the SCStream-captured audio levels.
+                inputNode.voiceProcessingOtherAudioDuckingConfiguration =
+                    .init(enableAdvancedDucking: false, duckingLevel: .min)
+                logger.info("Voice processing (AEC) enabled on mic input, ducking disabled")
+            } catch {
+                logger.warning("Failed to enable voice processing: \(error, privacy: .public) — mic echo may occur")
+            }
+        }
+
         let hwFormat = inputNode.inputFormat(forBus: 0)
 
         guard hwFormat.sampleRate > 0, hwFormat.channelCount > 0 else {
