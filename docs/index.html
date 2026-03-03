@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NoteTaker — Private Meeting Transcription for macOS</title>
+  <meta name="description" content="Privacy-first meeting transcription and summarization for macOS. Everything stays on your machine.">
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --border: #2a2d3a;
+      --text: #e4e4e7;
+      --text-muted: #9294a0;
+      --accent: #6c8cff;
+      --accent-hover: #8da6ff;
+      --green: #4ade80;
+      --red: #f87171;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .container {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* Header */
+    header {
+      padding: 48px 0 0;
+      text-align: center;
+    }
+
+    .app-icon {
+      width: 80px;
+      height: 80px;
+      background: linear-gradient(135deg, #6c8cff 0%, #4c5ebd 100%);
+      border-radius: 18px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 24px;
+    }
+
+    .app-icon svg {
+      width: 44px;
+      height: 44px;
+      fill: white;
+    }
+
+    h1 {
+      font-size: 40px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 12px;
+    }
+
+    .tagline {
+      font-size: 20px;
+      color: var(--text-muted);
+      max-width: 480px;
+      margin: 0 auto 32px;
+    }
+
+    .download-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--accent);
+      color: white;
+      text-decoration: none;
+      padding: 14px 32px;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 600;
+      transition: background 0.2s;
+    }
+
+    .download-btn:hover {
+      background: var(--accent-hover);
+    }
+
+    .download-btn svg {
+      width: 18px;
+      height: 18px;
+      fill: currentColor;
+    }
+
+    .download-meta {
+      margin-top: 12px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    /* Comparison */
+    .comparison {
+      margin: 64px 0 0;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .comparison-header {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .comparison-header span {
+      padding: 14px 16px;
+    }
+
+    .comparison-header span:not(:first-child) {
+      text-align: center;
+    }
+
+    .comparison-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      border-bottom: 1px solid var(--border);
+      font-size: 14px;
+    }
+
+    .comparison-row:last-child {
+      border-bottom: none;
+    }
+
+    .comparison-row span {
+      padding: 12px 16px;
+    }
+
+    .comparison-row span:not(:first-child) {
+      text-align: center;
+    }
+
+    .comparison-row .label {
+      color: var(--text-muted);
+    }
+
+    .yes { color: var(--green); }
+    .no { color: var(--red); }
+
+    /* Features */
+    .features {
+      margin: 64px 0;
+    }
+
+    .features h2 {
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 24px;
+      letter-spacing: -0.01em;
+    }
+
+    .feature-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .feature {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+    }
+
+    .feature h3 {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+
+    .feature p {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    /* Requirements */
+    .requirements {
+      margin-bottom: 64px;
+    }
+
+    .requirements h2 {
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 16px;
+      letter-spacing: -0.01em;
+    }
+
+    .req-list {
+      list-style: none;
+      font-size: 14px;
+      color: var(--text-muted);
+    }
+
+    .req-list li {
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .req-list li:last-child {
+      border-bottom: none;
+    }
+
+    .req-list strong {
+      color: var(--text);
+    }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 32px 0;
+      text-align: center;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    footer a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    footer a:hover {
+      text-decoration: underline;
+    }
+
+    .footer-links {
+      display: flex;
+      justify-content: center;
+      gap: 24px;
+      margin-bottom: 12px;
+    }
+
+    /* Responsive */
+    @media (max-width: 600px) {
+      h1 { font-size: 28px; }
+      .tagline { font-size: 17px; }
+      .feature-grid { grid-template-columns: 1fr; }
+      .comparison-header, .comparison-row {
+        grid-template-columns: 2fr 1fr 1fr;
+      }
+      .comparison-header span, .comparison-row span {
+        padding: 10px 10px;
+        font-size: 12px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="app-icon">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+          <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+        </svg>
+      </div>
+      <h1>NoteTaker</h1>
+      <p class="tagline">Private meeting transcription and summarization for macOS. Nothing ever leaves your machine.</p>
+      <a class="download-btn" href="https://github.com/Incept5/note-taker/releases/latest/download/NoteTaker-1.1.12.dmg">
+        <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+        Download for macOS
+      </a>
+      <p class="download-meta">v1.1.12 &middot; macOS 14.2+ &middot; Apple Silicon</p>
+    </header>
+
+    <div class="comparison">
+      <div class="comparison-header">
+        <span></span>
+        <span>Cloud tools</span>
+        <span>NoteTaker</span>
+      </div>
+      <div class="comparison-row">
+        <span class="label">Audio stays on device</span>
+        <span class="no">No</span>
+        <span class="yes">Yes</span>
+      </div>
+      <div class="comparison-row">
+        <span class="label">Transcription on device</span>
+        <span class="no">No</span>
+        <span class="yes">Yes</span>
+      </div>
+      <div class="comparison-row">
+        <span class="label">Summaries on device</span>
+        <span class="no">No</span>
+        <span class="yes">Yes</span>
+      </div>
+      <div class="comparison-row">
+        <span class="label">Works offline</span>
+        <span class="no">No</span>
+        <span class="yes">Yes</span>
+      </div>
+      <div class="comparison-row">
+        <span class="label">No account required</span>
+        <span class="no">No</span>
+        <span class="yes">Yes</span>
+      </div>
+      <div class="comparison-row">
+        <span class="label">Privacy guarantee</span>
+        <span>Contractual</span>
+        <span class="yes">Architectural</span>
+      </div>
+    </div>
+
+    <div class="features">
+      <h2>How it works</h2>
+      <div class="feature-grid">
+        <div class="feature">
+          <h3>Capture</h3>
+          <p>Records system audio from Zoom, Teams, Meet, and any other app, with your mic mixed in. Lives in the menu bar.</p>
+        </div>
+        <div class="feature">
+          <h3>Transcribe</h3>
+          <p>Instant transcription using Apple Speech Recognition during recording. WhisperKit available as fallback.</p>
+        </div>
+        <div class="feature">
+          <h3>Summarize</h3>
+          <p>Local LLM generates structured summaries with key decisions, action items, and discussion highlights.</p>
+        </div>
+        <div class="feature">
+          <h3>Auto-record</h3>
+          <p>Optionally starts recording when Zoom or Teams launches, or when a calendar event begins. Stops on silence.</p>
+        </div>
+        <div class="feature">
+          <h3>Calendar integration</h3>
+          <p>Connects to Apple Calendar or Google Calendar to identify participants and attribute action items.</p>
+        </div>
+        <div class="feature">
+          <h3>Custom models</h3>
+          <p>Use built-in MLX models or add any HuggingFace model. Ollama also supported for local or remote inference.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="requirements">
+      <h2>Requirements</h2>
+      <ul class="req-list">
+        <li><strong>macOS 14.2+</strong> (Sonoma) &mdash; required for ScreenCaptureKit audio capture</li>
+        <li><strong>Apple Silicon</strong> &mdash; M1 minimum, M2 Pro+ recommended</li>
+        <li><strong>16 GB RAM</strong> minimum &mdash; 32 GB recommended for LLM summarization</li>
+      </ul>
+    </div>
+  </div>
+
+  <footer>
+    <div class="container">
+      <div class="footer-links">
+        <a href="https://github.com/Incept5/note-taker">GitHub</a>
+        <a href="https://github.com/Incept5/note-taker/releases">Releases</a>
+        <a href="privacy-policy">Privacy Policy</a>
+      </div>
+      <p>Built by Incept5</p>
+    </div>
+  </footer>
+</body>
+</html>
