@@ -136,32 +136,31 @@ final class SummarizationService: ObservableObject {
         You are an expert meeting analyst. You will receive a transcript \(context)\
         of a meeting that lasted approximately \(durationMinutes) minutes.\(participantLine)
 
-        Produce a thorough, detailed analysis of the entire meeting. Do NOT be brief — \
-        capture the full substance of what was discussed. Your goal is that someone who \
-        missed the meeting can read your summary and understand everything that happened.
+        Produce a thorough, detailed analysis of the entire meeting. Your goal is that someone \
+        who missed the meeting can read your summary and understand everything that happened.
 
         Respond with a JSON object with exactly these keys:
 
-        - "summary": A comprehensive narrative overview of the meeting (at least 2-3 paragraphs). \
-        Separate each paragraph with two newlines (\\n\\n). \
-        Cover the main topics in the order they were discussed, who contributed what, \
-        the overall arc of the conversation, and any context needed to understand the discussion. \
-        Do not just list topics — explain what was said about each one.
+        - "overview": A concise 1-2 sentence summary of what the meeting covered and who attended.
 
-        - "keyPoints": An array of all significant points discussed. Be thorough — include \
-        every substantive topic, argument, insight, update, or piece of information shared. \
-        Each point should be a complete sentence with enough context to stand on its own.
-
-        - "decisions": An array of every decision, agreement, or conclusion reached. \
-        Include what was decided, why (if discussed), and any conditions or caveats mentioned.
+        - "keyDecisions": An array of specific decisions made during the meeting. Include \
+        context on why each decision was made when discussed.
 
         - "actionItems": An array of objects with "task" (string) and "owner" (string or null). \
         Be specific about what needs to be done, any deadlines mentioned, and who volunteered \
-        or was assigned. If ownership is unclear, set owner to null but still capture the task.
+        or was assigned. Group related tasks per person. If ownership is unclear, set owner \
+        to null but still capture the task.
 
-        - "openQuestions": An array of unresolved questions, disagreements, deferred topics, \
-        or anything that was raised but not concluded. Include any topics that someone said \
-        they would "get back to" or "follow up on".
+        - "discussionHighlights": An array of objects with "topic" (string) and "detail" (string). \
+        Each major discussion topic gets a short descriptive name as "topic" and a detailed \
+        paragraph as "detail" explaining what was discussed, by whom, and what conclusions \
+        were reached. Be thorough — capture the full substance of each topic.
+
+        - "blockers": An array of current blockers preventing progress that were mentioned \
+        in the meeting. If none were discussed, use an empty array.
+
+        - "nextSteps": An array of concrete next steps with timing where mentioned. These \
+        are forward-looking items that aren't necessarily assigned to a specific person.
 
         Respond ONLY with valid JSON, no markdown formatting or code fences.
         If a section has no items, use an empty array.
@@ -174,16 +173,25 @@ final class SummarizationService: ObservableObject {
 
         for candidate in candidates {
             if let data = candidate.data(using: .utf8),
-               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               json["summary"] is String {
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                // Accept either new format (overview) or old format (summary)
+                let hasNewFormat = json["overview"] is String
+                let hasOldFormat = json["summary"] is String
+                guard hasNewFormat || hasOldFormat else { continue }
+
                 return cleanSummary(MeetingSummary(
-                    summary: json["summary"] as? String ?? response,
-                    keyPoints: json["keyPoints"] as? [String] ?? [],
-                    decisions: json["decisions"] as? [String] ?? [],
+                    overview: json["overview"] as? String,
+                    keyDecisions: json["keyDecisions"] as? [String],
+                    discussionHighlights: parseDiscussionTopics(json["discussionHighlights"]),
+                    blockers: json["blockers"] as? [String],
+                    nextSteps: json["nextSteps"] as? [String],
                     actionItems: parseActionItems(json["actionItems"]),
-                    openQuestions: json["openQuestions"] as? [String] ?? [],
                     modelUsed: model,
-                    processingDuration: duration
+                    processingDuration: duration,
+                    summary: json["summary"] as? String,
+                    keyPoints: json["keyPoints"] as? [String],
+                    decisions: json["decisions"] as? [String],
+                    openQuestions: json["openQuestions"] as? [String]
                 ))
             }
         }
@@ -200,27 +208,49 @@ final class SummarizationService: ObservableObject {
 
         // Fallback: treat entire response as summary text
         return cleanSummary(MeetingSummary(
-            summary: response,
-            keyPoints: [],
-            decisions: [],
+            overview: nil,
+            keyDecisions: nil,
+            discussionHighlights: nil,
+            blockers: nil,
+            nextSteps: nil,
             actionItems: [],
-            openQuestions: [],
             modelUsed: model,
-            processingDuration: duration
+            processingDuration: duration,
+            summary: response,
+            keyPoints: nil,
+            decisions: nil,
+            openQuestions: nil
         ))
     }
 
     /// Cleans JSON artifacts from parsed summary fields — brackets, literal \n\n, raw JSON fragments.
     private func cleanSummary(_ summary: MeetingSummary) -> MeetingSummary {
         MeetingSummary(
-            summary: cleanSummaryText(summary.summary),
-            keyPoints: cleanStringArray(summary.keyPoints),
-            decisions: cleanStringArray(summary.decisions),
+            overview: summary.overview.map { cleanSummaryText($0) },
+            keyDecisions: summary.keyDecisions.map { cleanStringArray($0) },
+            discussionHighlights: summary.discussionHighlights?.map {
+                DiscussionTopic(topic: cleanSummaryText($0.topic), detail: cleanSummaryText($0.detail))
+            },
+            blockers: summary.blockers.map { cleanStringArray($0) },
+            nextSteps: summary.nextSteps.map { cleanStringArray($0) },
             actionItems: cleanActionItems(summary.actionItems),
-            openQuestions: cleanStringArray(summary.openQuestions),
             modelUsed: summary.modelUsed,
-            processingDuration: summary.processingDuration
+            processingDuration: summary.processingDuration,
+            summary: summary.summary.map { cleanSummaryText($0) },
+            keyPoints: summary.keyPoints.map { cleanStringArray($0) },
+            decisions: summary.decisions.map { cleanStringArray($0) },
+            openQuestions: summary.openQuestions.map { cleanStringArray($0) }
         )
+    }
+
+    private func parseDiscussionTopics(_ value: Any?) -> [DiscussionTopic]? {
+        guard let items = value as? [[String: Any]] else { return nil }
+        let topics = items.compactMap { dict -> DiscussionTopic? in
+            guard let topic = dict["topic"] as? String,
+                  let detail = dict["detail"] as? String else { return nil }
+            return DiscussionTopic(topic: topic, detail: detail)
+        }
+        return topics.isEmpty ? nil : topics
     }
 
     /// Cleans the narrative summary text of literal escape sequences and JSON artifacts.
@@ -374,24 +404,28 @@ final class SummarizationService: ObservableObject {
     /// Last-resort extraction: pull individual fields from the response using regex patterns
     /// when the full JSON fails to parse (e.g. deeply malformed but still has recognizable structure).
     private func extractRegexSummary(from response: String, model: String, duration: TimeInterval) -> MeetingSummary? {
-        // Look for "summary": "..." pattern — the value may span many lines
-        guard let summaryMatch = extractJSONStringValue(key: "summary", from: response),
-              !summaryMatch.isEmpty else {
+        // Try new format first (overview), then old format (summary)
+        let overviewMatch = extractJSONStringValue(key: "overview", from: response)
+        let summaryMatch = extractJSONStringValue(key: "summary", from: response)
+
+        guard (overviewMatch != nil && !overviewMatch!.isEmpty) ||
+              (summaryMatch != nil && !summaryMatch!.isEmpty) else {
             return nil
         }
 
-        let keyPoints = extractJSONArrayOfStrings(key: "keyPoints", from: response)
-        let openQuestions = extractJSONArrayOfStrings(key: "openQuestions", from: response)
-        let decisions = extractJSONArrayOfStrings(key: "decisions", from: response)
-
         return MeetingSummary(
-            summary: summaryMatch,
-            keyPoints: keyPoints,
-            decisions: decisions,
-            actionItems: parseActionItems(nil), // too complex for regex
-            openQuestions: openQuestions,
+            overview: overviewMatch,
+            keyDecisions: extractJSONArrayOfStrings(key: "keyDecisions", from: response).nilIfEmpty,
+            discussionHighlights: nil, // too complex for regex
+            blockers: extractJSONArrayOfStrings(key: "blockers", from: response).nilIfEmpty,
+            nextSteps: extractJSONArrayOfStrings(key: "nextSteps", from: response).nilIfEmpty,
+            actionItems: parseActionItems(nil),
             modelUsed: model,
-            processingDuration: duration
+            processingDuration: duration,
+            summary: summaryMatch,
+            keyPoints: extractJSONArrayOfStrings(key: "keyPoints", from: response).nilIfEmpty,
+            decisions: extractJSONArrayOfStrings(key: "decisions", from: response).nilIfEmpty,
+            openQuestions: extractJSONArrayOfStrings(key: "openQuestions", from: response).nilIfEmpty
         )
     }
 
@@ -467,10 +501,11 @@ final class SummarizationService: ObservableObject {
     ///
     /// Splits the response at known JSON key markers and extracts text blocks.
     private func extractLooseFormatSummary(from response: String, model: String, duration: TimeInterval) -> MeetingSummary? {
-        let knownKeys = ["summary", "keyPoints", "decisions", "actionItems", "openQuestions"]
+        let knownKeys = ["overview", "keyDecisions", "actionItems", "discussionHighlights", "blockers", "nextSteps",
+                         "summary", "keyPoints", "decisions", "openQuestions"]
 
-        // Check that the response contains at least "summary" as a key marker
-        guard response.contains("\"summary\"") else { return nil }
+        // Check that the response contains at least "overview" or "summary" as a key marker
+        guard response.contains("\"overview\"") || response.contains("\"summary\"") else { return nil }
 
         // Build a map of key -> text content between keys
         var sections: [String: String] = [:]
@@ -502,19 +537,25 @@ final class SummarizationService: ObservableObject {
             }
         }
 
-        guard let summaryText = sections["summary"], !summaryText.isEmpty else { return nil }
-
-        // Strip leading/trailing quotes if the model wrapped the value in them
-        let cleanSummary = summaryText.trimmingQuotes()
+        // Need at least overview or summary
+        let overviewText = sections["overview"]?.trimmingQuotes()
+        let summaryText = sections["summary"]?.trimmingQuotes()
+        guard (overviewText != nil && !overviewText!.isEmpty) ||
+              (summaryText != nil && !summaryText!.isEmpty) else { return nil }
 
         return MeetingSummary(
-            summary: cleanSummary,
-            keyPoints: extractBulletItems(from: sections["keyPoints"]),
-            decisions: extractBulletItems(from: sections["decisions"]),
+            overview: overviewText,
+            keyDecisions: extractBulletItems(from: sections["keyDecisions"]).nilIfEmpty,
+            discussionHighlights: nil, // can't reliably parse structured topics from loose format
+            blockers: extractBulletItems(from: sections["blockers"]).nilIfEmpty,
+            nextSteps: extractBulletItems(from: sections["nextSteps"]).nilIfEmpty,
             actionItems: extractLooseActionItems(from: sections["actionItems"]),
-            openQuestions: extractBulletItems(from: sections["openQuestions"]),
             modelUsed: model,
-            processingDuration: duration
+            processingDuration: duration,
+            summary: summaryText,
+            keyPoints: extractBulletItems(from: sections["keyPoints"]).nilIfEmpty,
+            decisions: extractBulletItems(from: sections["decisions"]).nilIfEmpty,
+            openQuestions: extractBulletItems(from: sections["openQuestions"]).nilIfEmpty
         )
     }
 
@@ -609,5 +650,12 @@ private extension String {
             return String(dropFirst().dropLast())
         }
         return self
+    }
+}
+
+extension Array {
+    /// Returns nil if the array is empty, otherwise returns self.
+    var nilIfEmpty: Self? {
+        isEmpty ? nil : self
     }
 }

@@ -66,22 +66,25 @@ struct MeetingResultWindowContent: View {
     private var summaryPane: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                if !summary.keyPoints.isEmpty {
-                    sectionView("Key Points") {
-                        ForEach(summary.keyPoints, id: \.self) { point in
-                            bulletItem(point, icon: "circle.fill", color: .blue)
-                        }
+                // Overview
+                let overviewText = summary.effectiveOverview
+                if !overviewText.isEmpty {
+                    sectionView("Overview") {
+                        summaryParagraphs(overviewText)
                     }
                 }
 
-                if !summary.decisions.isEmpty {
-                    sectionView("Decisions") {
-                        ForEach(summary.decisions, id: \.self) { decision in
+                // Key Decisions
+                let decisions = summary.effectiveKeyDecisions
+                if !decisions.isEmpty {
+                    sectionView("Key Decisions") {
+                        ForEach(decisions, id: \.self) { decision in
                             bulletItem(decision, icon: "checkmark.diamond.fill", color: .green)
                         }
                     }
                 }
 
+                // Action Items
                 if !summary.actionItems.isEmpty {
                     sectionView("Action Items") {
                         ForEach(Array(summary.actionItems.enumerated()), id: \.offset) { _, item in
@@ -104,16 +107,61 @@ struct MeetingResultWindowContent: View {
                     }
                 }
 
-                if !summary.openQuestions.isEmpty {
+                // Discussion Highlights
+                let highlights = summary.effectiveDiscussionHighlights
+                if !highlights.isEmpty && summary.isNewFormat {
+                    sectionView("Discussion Highlights") {
+                        ForEach(Array(highlights.enumerated()), id: \.offset) { _, topic in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(topic.topic)
+                                    .font(.body.bold())
+                                    .foregroundStyle(.blue)
+                                Text(topic.detail)
+                                    .font(.body)
+                                    .textSelection(.enabled)
+                            }
+                            .padding(.bottom, 4)
+                        }
+                    }
+                }
+
+                // Blockers
+                let blockers = summary.effectiveBlockers
+                if !blockers.isEmpty {
+                    sectionView("Blockers") {
+                        ForEach(blockers, id: \.self) { blocker in
+                            bulletItem(blocker, icon: "exclamationmark.triangle.fill", color: .red)
+                        }
+                    }
+                }
+
+                // Next Steps
+                let steps = summary.effectiveNextSteps
+                if !steps.isEmpty {
+                    sectionView("Next Steps") {
+                        ForEach(steps, id: \.self) { step in
+                            bulletItem(step, icon: "arrow.forward.circle.fill", color: .purple)
+                        }
+                    }
+                }
+
+                // Open Questions (old format)
+                let questions = summary.effectiveOpenQuestions
+                if !questions.isEmpty && !summary.isNewFormat {
                     sectionView("Open Questions") {
-                        ForEach(summary.openQuestions, id: \.self) { question in
+                        ForEach(questions, id: \.self) { question in
                             bulletItem(question, icon: "questionmark.circle.fill", color: .purple)
                         }
                     }
                 }
 
-                sectionView("Full Summary") {
-                    summaryParagraphs(summary.summary)
+                // Key Points (old format only)
+                if !summary.isNewFormat, let keyPoints = summary.keyPoints, !keyPoints.isEmpty {
+                    sectionView("Key Points") {
+                        ForEach(keyPoints, id: \.self) { point in
+                            bulletItem(point, icon: "circle.fill", color: .blue)
+                        }
+                    }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

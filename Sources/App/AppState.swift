@@ -89,6 +89,13 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Gain multiplier for mic audio in the recording (1.0 = unity, higher = louder).
+    @Published var micGain: Float {
+        didSet {
+            UserDefaults.standard.set(micGain, forKey: "micGain")
+        }
+    }
+
     @Published var autoRecordEnabled: Bool {
         didSet {
             UserDefaults.standard.set(autoRecordEnabled, forKey: "autoRecordEnabled")
@@ -217,6 +224,8 @@ final class AppState: ObservableObject {
         selectedMLXModel = UserDefaults.standard.string(forKey: "selectedMLXModel")
         selectedOllamaModel = UserDefaults.standard.string(forKey: "selectedOllamaModel")
         micEnabled = UserDefaults.standard.object(forKey: "micEnabled") as? Bool ?? true
+        let savedMicGain = UserDefaults.standard.float(forKey: "micGain")
+        micGain = savedMicGain > 0 ? savedMicGain : 2.0
         autoRecordEnabled = UserDefaults.standard.bool(forKey: "autoRecordEnabled")
         calendarAutoRecordEnabled = UserDefaults.standard.bool(forKey: "calendarAutoRecordEnabled")
         googleAuthService.loadCachedAuthState()
@@ -267,7 +276,8 @@ final class AppState: ObservableObject {
 
                 try await captureService.startCapture(
                     micEnabled: micEnabled,
-                    micDeviceUID: micEnabled ? audioDeviceManager.selectedInputDeviceUID : nil
+                    micDeviceUID: micEnabled ? audioDeviceManager.selectedInputDeviceUID : nil,
+                    micGain: micGain
                 )
                 let now = Date()
                 phase = .recording(since: now, liveText: "")
@@ -396,18 +406,7 @@ final class AppState: ObservableObject {
                 }
 
                 // Auto-start summarization if a model is selected and available
-                if summarizationBackend == "mlx" {
-                    if let modelId = selectedMLXModel, mlxModelManager.modelIsDownloaded(modelId) {
-                        startSummarization(audio: audio, transcription: result)
-                    }
-                } else {
-                    if selectedOllamaModel != nil {
-                        let available = await summarizationService.ollamaClient.checkAvailability()
-                        if available {
-                            startSummarization(audio: audio, transcription: result)
-                        }
-                    }
-                }
+                autoStartSummarization(audio: audio, transcription: result)
             } catch {
                 progressTask.cancel()
                 phase = .error(error.localizedDescription)
@@ -436,18 +435,7 @@ final class AppState: ObservableObject {
                 }
 
                 // Auto-start summarization
-                if summarizationBackend == "mlx" {
-                    if let modelId = selectedMLXModel, mlxModelManager.modelIsDownloaded(modelId) {
-                        startSummarization(audio: audio, transcription: result)
-                    }
-                } else {
-                    if selectedOllamaModel != nil {
-                        let available = await summarizationService.ollamaClient.checkAvailability()
-                        if available {
-                            startSummarization(audio: audio, transcription: result)
-                        }
-                    }
-                }
+                autoStartSummarization(audio: audio, transcription: result)
             } catch {
                 phase = .error(error.localizedDescription)
                 if let id = currentMeetingId {
@@ -457,7 +445,69 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Attempt to auto-start summarization after transcription completes.
+    /// Logs the reason if summarization is skipped.
+    private func autoStartSummarization(audio: CapturedAudio, transcription: MeetingTranscription) {
+        logger.info("Auto-summarization check: backend=\(self.summarizationBackend), transcript=\(transcription.combinedText.count) chars")
+
+        if summarizationBackend == "mlx" {
+            guard let modelId = selectedMLXModel else {
+                logger.info("Auto-summarization skipped: no MLX model selected")
+                return
+            }
+            guard mlxModelManager.modelIsDownloaded(modelId) else {
+                logger.info("Auto-summarization skipped: MLX model '\(modelId)' not downloaded")
+                return
+            }
+            startSummarization(audio: audio, transcription: transcription)
+        } else {
+            guard selectedOllamaModel != nil else {
+                logger.info("Auto-summarization skipped: no Ollama model selected")
+                return
+            }
+            Task {
+                let available = await summarizationService.ollamaClient.checkAvailability()
+                guard available else {
+                    logger.info("Auto-summarization skipped: Ollama not available")
+                    return
+                }
+                startSummarization(audio: audio, transcription: transcription)
+            }
+        }
+    }
+
+    /// Check whether a transcript has enough meaningful content to warrant summarization.
+    /// Returns true if the transcript has at least 50 words with sufficient variety.
+    private func transcriptHasSufficientContent(_ transcription: MeetingTranscription) -> Bool {
+        let text = transcription.combinedText
+        let words = text.split(whereSeparator: { $0.isWhitespace || $0.isNewline })
+            .map { $0.lowercased() }
+
+        // Need at least 50 words
+        guard words.count >= 50 else {
+            logger.info("Transcript too short for summarization: \(words.count) words (need 50)")
+            return false
+        }
+
+        // Check unique word ratio to filter repetitive noise ("um um um um...")
+        let uniqueWords = Set(words)
+        let uniqueRatio = Double(uniqueWords.count) / Double(words.count)
+        guard uniqueRatio > 0.15 else {
+            logger.info("Transcript too repetitive for summarization: \(String(format: "%.0f", uniqueRatio * 100))% unique words (\(uniqueWords.count)/\(words.count))")
+            return false
+        }
+
+        logger.info("Transcript content check passed: \(words.count) words, \(String(format: "%.0f", uniqueRatio * 100))% unique")
+        return true
+    }
+
     func startSummarization(audio: CapturedAudio, transcription: MeetingTranscription) {
+        // Gate: skip summarization if transcript lacks meaningful content
+        guard transcriptHasSufficientContent(transcription) else {
+            logger.info("Skipping summarization — insufficient transcript content")
+            return
+        }
+
         if summarizationBackend == "mlx" {
             guard let modelId = selectedMLXModel else {
                 phase = .error(SummarizationError.mlxModelNotSelected.localizedDescription)

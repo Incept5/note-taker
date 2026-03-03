@@ -56,7 +56,7 @@ final class AudioCaptureService: ObservableObject {
 
     // MARK: - Public API
 
-    func startCapture(micEnabled: Bool = true, micDeviceUID: String? = nil) async throws {
+    func startCapture(micEnabled: Bool = true, micDeviceUID: String? = nil, micGain: Float = 2.0) async throws {
         guard !isRecording else { return }
 
         // Stop monitor-only mode if active (transitioning to full recording)
@@ -83,6 +83,7 @@ final class AudioCaptureService: ObservableObject {
         recorder.onAudioBuffer = { [weak self] buffer in
             self?.onAudioBuffer?(buffer)
         }
+        recorder.micGain = micGain
         try await recorder.start(micEnabled: micEnabled, micDeviceUID: micDeviceUID)
         self.systemRecorder = recorder
 

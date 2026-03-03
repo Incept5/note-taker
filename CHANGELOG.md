@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.12
+
+- **Improved meeting summaries** — Summaries now use a richer structure: concise overview, key decisions with context, discussion highlights organized by topic, blockers, and concrete next steps. Produces more useful, actionable meeting notes.
+- **Hallucination prevention** — Short or noise-only recordings (silence, repeated filler words) are no longer sent to the LLM for summarization. A content gate checks for at least 50 meaningful words with sufficient variety before summarizing.
+- **Configurable mic volume** — New mic gain slider in Settings (0.5x–5.0x) lets you boost or reduce your mic level in recordings. Defaults to 2.0x.
+- **Voice processing removed** — Removed Apple's AEC voice processing which was attenuating the system-wide mic signal, making users inaudible to other meeting participants in Zoom/Teams.
+- **Custom MLX models** — Add any HuggingFace MLX model by pasting its ID or URL. Remove models you don't need. Qwen 2.5 3B added to the curated model list.
+- **Edit menu in Settings** — Cmd+C/V/X/A keyboard shortcuts now work in Settings text fields.
+- **Better diagnostics** — Detailed logging for auto-summarization decisions (model availability, content checks) to help troubleshoot when summarization doesn't trigger.
+- **Backward-compatible summaries** — Existing meeting summaries in the database display correctly with the new UI layout via automatic field mapping.
+
 ## 1.1.11
 
 - **Instant transcription** — Transcripts are now available immediately when recording stops. The live SFSpeech text captured during recording is used directly, eliminating the long WhisperKit batch processing wait. WhisperKit is retained as an automatic fallback if SFSpeech was unavailable.

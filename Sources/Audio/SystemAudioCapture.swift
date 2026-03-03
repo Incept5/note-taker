@@ -33,7 +33,8 @@ private final class MicRingBuffer {
 
     /// Read and remove up to `count` samples, mixing (adding) them into `destination`.
     /// Writes mono mic samples into each channel of the non-interleaved stereo buffer.
-    func mixInto(channelData: [UnsafeMutablePointer<Float>], channelCount: Int, frameCount: Int) {
+    /// - Parameter gain: Multiplier applied to mic samples before mixing (1.0 = unity).
+    func mixInto(channelData: [UnsafeMutablePointer<Float>], channelCount: Int, frameCount: Int, gain: Float = 1.0) {
         lock.lock()
         defer { lock.unlock() }
 
@@ -45,7 +46,7 @@ private final class MicRingBuffer {
 
         for i in 0..<samplesToMix {
             let idx = (readStart + i) % capacity
-            let sample = buffer[idx]
+            let sample = buffer[idx] * gain
             // Mix mono mic into all stereo channels
             for ch in 0..<channelCount {
                 channelData[ch][i] += sample
@@ -58,9 +59,8 @@ private final class MicRingBuffer {
 // MARK: - ScreenCaptureAudioRecorder
 
 /// Captures system audio using ScreenCaptureKit's SCStream (audio-only mode).
-/// On macOS 15+, mic audio is mixed in natively via `captureMicrophone = true`.
-/// On macOS 14.x, mic audio is captured separately via AVAudioEngine and mixed
-/// into the system audio stream in the SCStream callback.
+/// Mic audio is captured separately via AVAudioEngine and mixed into the
+/// system audio stream in the SCStream callback with configurable gain.
 final class ScreenCaptureAudioRecorder: NSObject, @unchecked Sendable {
     private let logger = Logger(subsystem: "com.incept5.NoteTaker", category: "ScreenCaptureAudioRecorder")
     private let queue = DispatchQueue(label: "com.incept5.NoteTaker.SCStreamAudio", qos: .userInitiated)
@@ -70,9 +70,12 @@ final class ScreenCaptureAudioRecorder: NSObject, @unchecked Sendable {
     private var audioFile: AVAudioFile?
     private var audioFormat: AVAudioFormat?
 
-    // Mic mixing (macOS 14.x fallback)
+    // Mic mixing
     private var micEngine: AVAudioEngine?
     private var micRingBuffer: MicRingBuffer?
+
+    /// Gain multiplier applied to mic audio before mixing (1.0 = unity, 2.0 = double volume).
+    var micGain: Float = 2.0
 
     private(set) var isRecording = false
 
@@ -216,7 +219,7 @@ final class ScreenCaptureAudioRecorder: NSObject, @unchecked Sendable {
     }
 
     /// Start AVAudioEngine to capture mic input and feed samples into the ring buffer.
-    /// Mic samples are mixed into the system audio stream in the SCStream callback.
+    /// Mic samples are mixed into the system audio stream (with gain) in the SCStream callback.
     private func startMicEngine(deviceUID: String? = nil) {
         let engine = AVAudioEngine()
 
@@ -241,21 +244,10 @@ final class ScreenCaptureAudioRecorder: NSObject, @unchecked Sendable {
 
         let inputNode = engine.inputNode
 
-        // Enable Apple's built-in voice processing (AEC + noise suppression + AGC).
-        // This uses the system speaker output as a reference signal to cancel echo
-        // from the mic picking up system audio that's already in the SCStream capture.
-        if #available(macOS 14.0, *) {
-            do {
-                try inputNode.setVoiceProcessingEnabled(true)
-                // Disable ducking — voice processing reduces system audio volume by default,
-                // which lowers both speaker output and the SCStream-captured audio levels.
-                inputNode.voiceProcessingOtherAudioDuckingConfiguration =
-                    .init(enableAdvancedDucking: false, duckingLevel: .min)
-                logger.info("Voice processing (AEC) enabled on mic input, ducking disabled")
-            } catch {
-                logger.warning("Failed to enable voice processing: \(error, privacy: .public) — mic echo may occur")
-            }
-        }
+        // Voice processing (AEC) intentionally NOT enabled — it attenuates the
+        // system-wide mic signal, making the user inaudible to other meeting
+        // participants. Some mic echo may appear in recordings but this is
+        // acceptable for transcription/summarization purposes.
 
         let hwFormat = inputNode.inputFormat(forBus: 0)
 
@@ -369,7 +361,7 @@ final class ScreenCaptureAudioRecorder: NSObject, @unchecked Sendable {
 
         isRecording = false
 
-        // Stop mic engine (macOS 14.x path)
+        // Stop mic engine
         if let engine = micEngine {
             engine.inputNode.removeTap(onBus: 0)
             engine.stop()
@@ -477,14 +469,14 @@ extension ScreenCaptureAudioRecorder: SCStreamOutput {
             return
         }
 
-        // Mix mic audio into system buffer (macOS 14.x path only)
+        // Mix mic audio into system buffer with gain
         if let ringBuffer = micRingBuffer, let channelData = buffer.floatChannelData {
             let channelCount = Int(buffer.format.channelCount)
             var channels = [UnsafeMutablePointer<Float>]()
             for ch in 0..<channelCount {
                 channels.append(channelData[ch])
             }
-            ringBuffer.mixInto(channelData: channels, channelCount: channelCount, frameCount: Int(buffer.frameLength))
+            ringBuffer.mixInto(channelData: channels, channelCount: channelCount, frameCount: Int(buffer.frameLength), gain: micGain)
         }
 
         // Update audio level (always, even in monitor-only mode)

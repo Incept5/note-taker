@@ -175,20 +175,23 @@ struct MeetingDetailView: View {
 
     @ViewBuilder
     private func summaryContent(_ summary: MeetingSummary) -> some View {
-        if !summary.keyPoints.isEmpty {
-            sectionHeader("Key Points")
-            ForEach(summary.keyPoints, id: \.self) { point in
-                bulletPoint(point)
-            }
+        // Overview
+        let overviewText = summary.effectiveOverview
+        if !overviewText.isEmpty {
+            sectionHeader("Overview")
+            summaryParagraphs(overviewText)
         }
 
-        if !summary.decisions.isEmpty {
-            sectionHeader("Decisions")
-            ForEach(summary.decisions, id: \.self) { decision in
+        // Key Decisions
+        let decisions = summary.effectiveKeyDecisions
+        if !decisions.isEmpty {
+            sectionHeader("Key Decisions")
+            ForEach(decisions, id: \.self) { decision in
                 bulletPoint(decision)
             }
         }
 
+        // Action Items
         if !summary.actionItems.isEmpty {
             sectionHeader("Action Items")
             ForEach(summary.actionItems, id: \.task) { item in
@@ -209,15 +212,57 @@ struct MeetingDetailView: View {
             }
         }
 
-        if !summary.openQuestions.isEmpty {
+        // Discussion Highlights
+        let highlights = summary.effectiveDiscussionHighlights
+        if !highlights.isEmpty && summary.isNewFormat {
+            sectionHeader("Discussion Highlights")
+            ForEach(Array(highlights.enumerated()), id: \.offset) { _, topic in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(topic.topic)
+                        .font(.callout.bold())
+                        .foregroundStyle(.blue)
+                    Text(topic.detail)
+                        .font(.callout)
+                        .textSelection(.enabled)
+                }
+                .padding(.bottom, 2)
+            }
+        }
+
+        // Blockers
+        let blockers = summary.effectiveBlockers
+        if !blockers.isEmpty {
+            sectionHeader("Blockers")
+            ForEach(blockers, id: \.self) { blocker in
+                bulletPoint(blocker)
+            }
+        }
+
+        // Next Steps
+        let steps = summary.effectiveNextSteps
+        if !steps.isEmpty {
+            sectionHeader("Next Steps")
+            ForEach(steps, id: \.self) { step in
+                bulletPoint(step)
+            }
+        }
+
+        // Open Questions (old format)
+        let questions = summary.effectiveOpenQuestions
+        if !questions.isEmpty && !summary.isNewFormat {
             sectionHeader("Open Questions")
-            ForEach(summary.openQuestions, id: \.self) { q in
+            ForEach(questions, id: \.self) { q in
                 bulletPoint(q)
             }
         }
 
-        sectionHeader("Full Summary")
-        summaryParagraphs(summary.summary)
+        // Key Points (old format only, when no discussion highlights)
+        if !summary.isNewFormat, let keyPoints = summary.keyPoints, !keyPoints.isEmpty {
+            sectionHeader("Key Points")
+            ForEach(keyPoints, id: \.self) { point in
+                bulletPoint(point)
+            }
+        }
 
         Text("Summarized by \(summary.modelUsed)")
             .font(.caption2)

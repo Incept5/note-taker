@@ -56,9 +56,39 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 
         self.window = win
 
+        installEditMenuIfNeeded()
+
         NSApp.setActivationPolicy(.regular)
         win.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// Menu bar apps have no Edit menu, so Cmd+V/C/X/A don't work in TextFields.
+    /// Install a minimal Edit menu so standard keyboard shortcuts work.
+    private func installEditMenuIfNeeded() {
+        guard let mainMenu = NSApp.mainMenu else {
+            let menu = NSMenu()
+            let editItem = NSMenuItem(title: "Edit", action: nil, keyEquivalent: "")
+            editItem.submenu = makeEditMenu()
+            menu.addItem(editItem)
+            NSApp.mainMenu = menu
+            return
+        }
+        // Only add if not already present
+        if mainMenu.item(withTitle: "Edit") == nil {
+            let editItem = NSMenuItem(title: "Edit", action: nil, keyEquivalent: "")
+            editItem.submenu = makeEditMenu()
+            mainMenu.addItem(editItem)
+        }
+    }
+
+    private func makeEditMenu() -> NSMenu {
+        let edit = NSMenu(title: "Edit")
+        edit.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        return edit
     }
 
     func close() {

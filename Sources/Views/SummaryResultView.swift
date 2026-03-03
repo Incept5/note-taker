@@ -28,19 +28,21 @@ struct SummaryResultView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    // Key Points
-                    if !summary.keyPoints.isEmpty {
-                        sectionCard("Key Points", icon: "list.bullet", color: .blue) {
-                            ForEach(summary.keyPoints, id: \.self) { point in
-                                bulletItem(point, color: .blue)
-                            }
+                    // Overview
+                    let overviewText = summary.effectiveOverview
+                    if !overviewText.isEmpty {
+                        sectionCard("Overview", icon: "doc.plaintext", color: .secondary) {
+                            Text(overviewText)
+                                .font(.system(.body, design: .default))
+                                .textSelection(.enabled)
                         }
                     }
 
-                    // Decisions
-                    if !summary.decisions.isEmpty {
-                        sectionCard("Decisions", icon: "checkmark.seal.fill", color: .green) {
-                            ForEach(summary.decisions, id: \.self) { decision in
+                    // Key Decisions
+                    let decisions = summary.effectiveKeyDecisions
+                    if !decisions.isEmpty {
+                        sectionCard("Key Decisions", icon: "checkmark.seal.fill", color: .green) {
+                            ForEach(decisions, id: \.self) { decision in
                                 bulletItem(decision, color: .green)
                             }
                         }
@@ -69,21 +71,60 @@ struct SummaryResultView: View {
                         }
                     }
 
-                    // Open Questions
-                    if !summary.openQuestions.isEmpty {
+                    // Discussion Highlights
+                    let highlights = summary.effectiveDiscussionHighlights
+                    if !highlights.isEmpty && summary.isNewFormat {
+                        sectionCard("Discussion Highlights", icon: "bubble.left.and.bubble.right", color: .blue) {
+                            ForEach(Array(highlights.enumerated()), id: \.offset) { _, topic in
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(topic.topic)
+                                        .font(.subheadline.bold())
+                                        .foregroundStyle(.blue)
+                                    Text(topic.detail)
+                                        .font(.system(.body, design: .default))
+                                        .textSelection(.enabled)
+                                }
+                                .padding(.bottom, 4)
+                            }
+                        }
+                    }
+
+                    // Blockers
+                    let blockers = summary.effectiveBlockers
+                    if !blockers.isEmpty {
+                        sectionCard("Blockers", icon: "exclamationmark.triangle", color: .red) {
+                            ForEach(blockers, id: \.self) { blocker in
+                                bulletItem(blocker, color: .red)
+                            }
+                        }
+                    }
+
+                    // Next Steps
+                    let steps = summary.effectiveNextSteps
+                    if !steps.isEmpty {
+                        sectionCard("Next Steps", icon: "arrow.forward.circle", color: .purple) {
+                            ForEach(steps, id: \.self) { step in
+                                bulletItem(step, color: .purple)
+                            }
+                        }
+                    }
+
+                    // Open Questions (old format fallback)
+                    let questions = summary.effectiveOpenQuestions
+                    if !questions.isEmpty && !summary.isNewFormat {
                         sectionCard("Open Questions", icon: "questionmark.circle", color: .purple) {
-                            ForEach(summary.openQuestions, id: \.self) { question in
+                            ForEach(questions, id: \.self) { question in
                                 bulletItem(question, color: .purple)
                             }
                         }
                     }
 
-                    // Full Summary
-                    if !summary.summary.isEmpty {
-                        sectionCard("Full Summary", icon: "doc.plaintext", color: .secondary) {
-                            Text(summary.summary)
-                                .font(.system(.body, design: .default))
-                                .textSelection(.enabled)
+                    // Key Points (old format fallback)
+                    if !summary.isNewFormat, let keyPoints = summary.keyPoints, !keyPoints.isEmpty {
+                        sectionCard("Key Points", icon: "list.bullet", color: .blue) {
+                            ForEach(keyPoints, id: \.self) { point in
+                                bulletItem(point, color: .blue)
+                            }
                         }
                     }
 

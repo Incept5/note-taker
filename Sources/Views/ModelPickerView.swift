@@ -20,6 +20,9 @@ struct ModelPickerView: View {
     @State private var mlxDownloadProgress: Double = 0
     @State private var mlxDownloadError: String?
 
+    // Custom MLX model
+    @State private var customModelId: String = ""
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
@@ -62,6 +65,21 @@ struct ModelPickerView: View {
 
             if appState.micEnabled {
                 micDevicePicker
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Mic volume boost")
+                            .font(.body)
+                        Spacer()
+                        Text(String(format: "%.1fx", appState.micGain))
+                            .font(.body.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                    Slider(value: $appState.micGain, in: 0.5...5.0, step: 0.5)
+                    Text("Amplifies your mic in the recording. Higher values make your voice louder in transcripts.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Divider()
@@ -219,12 +237,64 @@ struct ModelPickerView: View {
                     .font(.caption)
                     .foregroundStyle(.red)
             }
+
+            Divider()
+
+            // Add custom model
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Add Custom Model")
+                    .font(.callout.bold())
+                    .foregroundStyle(.secondary)
+
+                HStack(spacing: 8) {
+                    TextField("mlx-community/model-name", text: $customModelId)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.body.monospaced())
+                        .onSubmit { addCustomModel() }
+
+                    Button {
+                        if let clip = NSPasteboard.general.string(forType: .string) {
+                            customModelId = clip.trimmingCharacters(in: .whitespacesAndNewlines)
+                        }
+                    } label: {
+                        Image(systemName: "doc.on.clipboard")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .help("Paste from clipboard")
+
+                    Button("Add") {
+                        addCustomModel()
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(isAddCustomModelDisabled)
+                }
+
+                Text("Enter a HuggingFace model ID (e.g. mlx-community/Qwen3-4B-4bit)")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
         }
+    }
+
+    private var isAddCustomModelDisabled: Bool {
+        customModelId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func addCustomModel() {
+        let trimmed = customModelId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        guard let modelId = mlxModelManager.addCustomModel(id: trimmed) else { return }
+        customModelId = ""
+        // Auto-start download for the newly added model
+        startMLXDownload(modelId)
     }
 
     @ViewBuilder
     private func mlxModelRow(_ model: MLXModel) -> some View {
         let isSelected = appState.selectedMLXModel == model.id
+        let isDownloading = mlxDownloadingId == model.id
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
@@ -234,6 +304,14 @@ struct ModelPickerView: View {
                         Image(systemName: "checkmark.circle.fill")
                             .foregroundStyle(.green)
                             .font(.caption)
+                    }
+                    if model.isCustom {
+                        Text("Custom")
+                            .font(.caption2)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(Color.orange.opacity(0.15), in: RoundedRectangle(cornerRadius: 3))
+                            .foregroundStyle(.orange)
                     }
                 }
                 Text(model.description)
@@ -259,7 +337,7 @@ struct ModelPickerView: View {
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                 }
-            } else if mlxDownloadingId == model.id {
+            } else if isDownloading {
                 VStack(spacing: 2) {
                     ProgressView(value: mlxDownloadProgress)
                         .frame(width: 80)
@@ -275,6 +353,21 @@ struct ModelPickerView: View {
                 .controlSize(.small)
                 .disabled(mlxDownloadingId != nil)
             }
+
+            // Remove button
+            Button {
+                mlxModelManager.removeModel(model.id)
+                if appState.selectedMLXModel == model.id {
+                    appState.selectedMLXModel = nil
+                }
+            } label: {
+                Image(systemName: "xmark.circle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .disabled(isDownloading)
+            .help("Remove model")
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 12)
