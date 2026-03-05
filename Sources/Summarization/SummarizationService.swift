@@ -25,6 +25,9 @@ final class SummarizationService: ObservableObject {
         ollamaClient = OllamaClient(baseURL: url)
     }
 
+    /// Custom system prompt override. When set, replaces the default built-in prompt.
+    var customSystemPrompt: String?
+
     func summarize(transcript: String, appName: String?, duration: TimeInterval, participants: [String]? = nil) async throws -> MeetingSummary {
         switch backend {
         case .ollama:
@@ -122,6 +125,41 @@ final class SummarizationService: ObservableObject {
         try await ollamaClient.listModels()
     }
 
+    /// The default system prompt used when no custom prompt is set.
+    static let defaultSystemPromptTemplate = """
+    You are an expert meeting analyst. You will receive a transcript {{context}}\
+    of a meeting that lasted approximately {{duration}} minutes.{{participants}}
+
+    Produce a thorough, detailed analysis of the entire meeting. Your goal is that someone \
+    who missed the meeting can read your summary and understand everything that happened.
+
+    Respond with a JSON object with exactly these keys:
+
+    - "overview": A concise 1-2 sentence summary of what the meeting covered and who attended.
+
+    - "keyDecisions": An array of specific decisions made during the meeting. Include \
+    context on why each decision was made when discussed.
+
+    - "actionItems": An array of objects with "task" (string) and "owner" (string or null). \
+    Be specific about what needs to be done, any deadlines mentioned, and who volunteered \
+    or was assigned. Group related tasks per person. If ownership is unclear, set owner \
+    to null but still capture the task.
+
+    - "discussionHighlights": An array of objects with "topic" (string) and "detail" (string). \
+    Each major discussion topic gets a short descriptive name as "topic" and a detailed \
+    paragraph as "detail" explaining what was discussed, by whom, and what conclusions \
+    were reached. Be thorough — capture the full substance of each topic.
+
+    - "blockers": An array of current blockers preventing progress that were mentioned \
+    in the meeting. If none were discussed, use an empty array.
+
+    - "nextSteps": An array of concrete next steps with timing where mentioned. These \
+    are forward-looking items that aren't necessarily assigned to a specific person.
+
+    Respond ONLY with valid JSON, no markdown formatting or code fences.
+    If a section has no items, use an empty array.
+    """
+
     private func buildSystemPrompt(appName: String?, duration: TimeInterval, participants: [String]? = nil) -> String {
         let durationMinutes = Int(duration / 60)
         let context = appName.map { "from \($0) " } ?? ""
@@ -132,39 +170,14 @@ final class SummarizationService: ObservableObject {
             participantLine = ""
         }
 
-        return """
-        You are an expert meeting analyst. You will receive a transcript \(context)\
-        of a meeting that lasted approximately \(durationMinutes) minutes.\(participantLine)
+        let template = customSystemPrompt?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            ? customSystemPrompt!
+            : Self.defaultSystemPromptTemplate
 
-        Produce a thorough, detailed analysis of the entire meeting. Your goal is that someone \
-        who missed the meeting can read your summary and understand everything that happened.
-
-        Respond with a JSON object with exactly these keys:
-
-        - "overview": A concise 1-2 sentence summary of what the meeting covered and who attended.
-
-        - "keyDecisions": An array of specific decisions made during the meeting. Include \
-        context on why each decision was made when discussed.
-
-        - "actionItems": An array of objects with "task" (string) and "owner" (string or null). \
-        Be specific about what needs to be done, any deadlines mentioned, and who volunteered \
-        or was assigned. Group related tasks per person. If ownership is unclear, set owner \
-        to null but still capture the task.
-
-        - "discussionHighlights": An array of objects with "topic" (string) and "detail" (string). \
-        Each major discussion topic gets a short descriptive name as "topic" and a detailed \
-        paragraph as "detail" explaining what was discussed, by whom, and what conclusions \
-        were reached. Be thorough — capture the full substance of each topic.
-
-        - "blockers": An array of current blockers preventing progress that were mentioned \
-        in the meeting. If none were discussed, use an empty array.
-
-        - "nextSteps": An array of concrete next steps with timing where mentioned. These \
-        are forward-looking items that aren't necessarily assigned to a specific person.
-
-        Respond ONLY with valid JSON, no markdown formatting or code fences.
-        If a section has no items, use an empty array.
-        """
+        return template
+            .replacingOccurrences(of: "{{context}}", with: context)
+            .replacingOccurrences(of: "{{duration}}", with: "\(durationMinutes)")
+            .replacingOccurrences(of: "{{participants}}", with: participantLine)
     }
 
     private func parseSummary(response: String, model: String, duration: TimeInterval) -> MeetingSummary {

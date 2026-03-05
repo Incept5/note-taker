@@ -128,6 +128,21 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Custom system prompt for summarization. When nil or empty, the default built-in prompt is used.
+    /// Persisted manually via `setCustomSystemPrompt(_:)` to avoid @Published didSet init bugs.
+    @Published var customSystemPrompt: String?
+
+    func setCustomSystemPrompt(_ prompt: String?) {
+        let trimmed = prompt?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let trimmed, !trimmed.isEmpty {
+            customSystemPrompt = trimmed
+            UserDefaults.standard.set(trimmed, forKey: "customSystemPrompt")
+        } else {
+            customSystemPrompt = nil
+            UserDefaults.standard.removeObject(forKey: "customSystemPrompt")
+        }
+    }
+
     let captureService = AudioCaptureService()
     let audioDeviceManager = AudioDeviceManager()
     let modelManager: ModelManager
@@ -199,7 +214,7 @@ final class AppState: ObservableObject {
     /// Audio level below this is considered silence (0..1 scale).
     private static let silenceLevelThreshold: Float = 0.005
     /// Grace period after calendar event end before auto-stopping (seconds).
-    private static let calendarEndGracePeriodSeconds: TimeInterval = 5 * 60
+    private static let calendarEndGracePeriodSeconds: TimeInterval = 15 * 60
     /// How many consecutive seconds of audio needed to confirm a meeting has started.
     private static let meetingAudioConfirmSeconds = 5
     /// How long to wait for meeting audio before giving up (seconds).
@@ -233,6 +248,7 @@ final class AppState: ObservableObject {
         let savedRetention = UserDefaults.standard.integer(forKey: "recordingRetentionDays")
         recordingRetentionDays = savedRetention > 0 ? savedRetention : 28
         speechRecognitionOnDeviceOnly = UserDefaults.standard.object(forKey: "speechRecognitionOnDeviceOnly") as? Bool ?? true
+        customSystemPrompt = UserDefaults.standard.string(forKey: "customSystemPrompt")
 
         // Show onboarding if never completed
         if !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding") {
@@ -507,6 +523,9 @@ final class AppState: ObservableObject {
             logger.info("Skipping summarization — insufficient transcript content")
             return
         }
+
+        // Pass custom system prompt to summarization service
+        summarizationService.customSystemPrompt = customSystemPrompt
 
         if summarizationBackend == "mlx" {
             guard let modelId = selectedMLXModel else {

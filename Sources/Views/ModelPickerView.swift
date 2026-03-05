@@ -23,6 +23,10 @@ struct ModelPickerView: View {
     // Custom MLX model
     @State private var customModelId: String = ""
 
+    // System prompt editing
+    @State private var showingPromptEditor = false
+    @State private var editingPrompt: String = ""
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
@@ -220,7 +224,97 @@ struct ModelPickerView: View {
             } else {
                 ollamaModelSection
             }
+
+            Divider()
+
+            // System prompt customization
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("System Prompt")
+                            .font(.callout.bold())
+                            .foregroundStyle(.secondary)
+                        if appState.customSystemPrompt?.isEmpty == false {
+                            Text("Using custom prompt")
+                                .font(.caption)
+                                .foregroundStyle(.purple)
+                        } else {
+                            Text("Using default prompt")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    Spacer()
+                    Button("Edit Prompt") {
+                        showingPromptEditor = true
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+
+                Text("Customise the instructions sent to the LLM when summarising. Use {{duration}}, {{context}}, and {{participants}} as placeholders.")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
         }
+        .sheet(isPresented: $showingPromptEditor) {
+            systemPromptEditor
+        }
+    }
+
+    // MARK: - System Prompt Editor
+
+    @ViewBuilder
+    private var systemPromptEditor: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("Edit System Prompt")
+                    .font(.headline)
+                Spacer()
+                Button("Reset to Default") {
+                    editingPrompt = SummarizationService.defaultSystemPromptTemplate
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+            .padding()
+
+            TextEditor(text: $editingPrompt)
+                .font(.body.monospaced())
+                .frame(minHeight: 300)
+                .padding(.horizontal)
+                .onAppear {
+                    editingPrompt = appState.customSystemPrompt ?? SummarizationService.defaultSystemPromptTemplate
+                }
+
+            HStack {
+                Text("Placeholders: {{duration}}, {{context}}, {{participants}}")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button("Cancel") {
+                    showingPromptEditor = false
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .keyboardShortcut(.cancelAction)
+
+                Button("Save") {
+                    let trimmed = editingPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if trimmed == SummarizationService.defaultSystemPromptTemplate.trimmingCharacters(in: .whitespacesAndNewlines) {
+                        appState.setCustomSystemPrompt(nil)
+                    } else {
+                        appState.setCustomSystemPrompt(trimmed)
+                    }
+                    showingPromptEditor = false
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .keyboardShortcut(.defaultAction)
+            }
+            .padding()
+        }
+        .frame(width: 600, height: 500)
     }
 
     // MARK: - MLX Model Section
