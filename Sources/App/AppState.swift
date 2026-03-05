@@ -181,8 +181,6 @@ final class AppState: ObservableObject {
     /// Text from the current SFSpeech "window" — committed to liveTranscriptSegments when
     /// we detect a text shrink (SFSpeech reset) or when recording stops.
     private var currentChunkText: String = ""
-    /// Length of text from the previous callback — used to detect shrinks.
-    private var lastCallbackTextLength: Int = 0
     /// Wall-clock time when the current chunk started.
     private var currentChunkStartDate: Date = .now
     /// When the current recording started.
@@ -301,7 +299,6 @@ final class AppState: ObservableObject {
                 // Reset live transcript buffer
                 liveTranscriptSegments = []
                 currentChunkText = ""
-                lastCallbackTextLength = 0
                 currentChunkStartDate = now
                 liveTextRecordingStart = now
 
@@ -787,7 +784,6 @@ final class AppState: ObservableObject {
         currentMeetingCalendarEndTime = nil
         liveTranscriptSegments = []
         currentChunkText = ""
-        lastCallbackTextLength = 0
         autoRecordTrigger = nil
         stopMeetingDetection()
         meetingStore.loadRecentMeetings()
@@ -830,21 +826,12 @@ final class AppState: ObservableObject {
 
     // MARK: - Live Transcript Buffer
 
-    /// Called on every SFSpeech text update. Detects when text shrinks (session reset)
-    /// and commits the previous chunk as a timestamped segment. Only appends, never deletes.
+    /// Called on every SFSpeech text update. Stores the full accumulated text and updates
+    /// the live display. No segment creation during recording — segments are only created
+    /// at stop time by `commitCurrentChunk()`.
     private func bufferLiveText(_ text: String) {
-        let now = Date.now
-
-        // Text shrank → SFSpeech reset internally or session restarted.
-        // Commit what we had as a finished segment.
-        if text.count < lastCallbackTextLength {
-            commitCurrentChunk()
-            currentChunkStartDate = now
-        }
-
         // Always store the latest text for the current chunk
         currentChunkText = text
-        lastCallbackTextLength = text.count
 
         // Build the full display text from all committed segments + current chunk
         let displayText = buildFullText()
@@ -870,7 +857,6 @@ final class AppState: ObservableObject {
         logger.info("Committed transcript chunk: \(trimmed.count) chars at \(String(format: "%.1f", startTime))s (total segments: \(self.liveTranscriptSegments.count))")
 
         currentChunkText = ""
-        lastCallbackTextLength = 0
     }
 
     /// Full text from all committed segments + current chunk.

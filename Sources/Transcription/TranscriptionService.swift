@@ -70,9 +70,7 @@ final class TranscriptionService: ObservableObject {
     ) async throws -> MeetingTranscription {
         let start = Date()
 
-        guard let model = modelManager.selectedModel else {
-            throw TranscriptionError.noModelSelected
-        }
+        let modelName = modelManager.selectedModel?.displayName ?? "SFSpeech (live)"
 
         progress = 1.0
         progressText = "Done"
@@ -84,7 +82,7 @@ final class TranscriptionService: ObservableObject {
             micTranscript: nil,
             combinedText: systemTranscript.fullText.trimmingCharacters(in: .whitespacesAndNewlines),
             processingDuration: duration,
-            modelUsed: model.displayName
+            modelUsed: modelName
         )
     }
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.14
+
+- **Fixed transcript duplication** — Transcripts no longer contain cascading repeated text. The live transcript buffer was incorrectly committing the full accumulated text as each segment, causing massive duplication when segments were joined.
+- **Fixed transcript loss across SFSpeech resets** — SFSpeech sometimes silently resets its recognition within a session (without error 209 or isFinal). Text from before the reset was being overwritten. Now detects within-session text shrinks and preserves the previous text before it's lost.
+- **Fixed model picker popup after transcription** — Stopping a recording no longer triggers a WhisperKit model selection prompt. The streaming transcript path doesn't use WhisperKit, so the model requirement has been removed.
+
 ## 1.1.13
 
 - **Custom system prompt** — Edit the system prompt used when summarising meetings. Access via Settings → Summarization → Edit Prompt. Your custom prompt persists across sessions.

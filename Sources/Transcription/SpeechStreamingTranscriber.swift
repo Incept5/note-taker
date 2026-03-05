@@ -140,6 +140,15 @@ final class SpeechStreamingTranscriber {
 
         if let result {
             let text = result.bestTranscription.formattedString
+
+            // Detect within-session text shrink — SFSpeech sometimes internally resets
+            // without firing error 209 or isFinal. If text drops significantly, commit
+            // what we had before it's overwritten.
+            if !sessionLatest.isEmpty && text.count < sessionLatest.count / 2 {
+                logger.info("Within-session text shrink detected: \(self.sessionLatest.count) → \(text.count) chars — committing before overwrite")
+                commitSession()
+            }
+
             sessionLatest = text
 
             if result.isFinal {
