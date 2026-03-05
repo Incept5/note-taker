@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.13
+
+- **Custom system prompt** — Edit the system prompt used when summarising meetings. Access via Settings → Summarization → Edit Prompt. Your custom prompt persists across sessions.
+- **Placeholder support** — Use `{{duration}}`, `{{context}}`, and `{{participants}}` in your custom prompt to inject meeting duration, app name, and participant names dynamically.
+- **Reset to default** — One-click reset to the built-in prompt from the editor.
+
 ## 1.1.12
 
 - **Improved meeting summaries** — Summaries now use a richer structure: concise overview, key decisions with context, discussion highlights organized by topic, blockers, and concrete next steps. Produces more useful, actionable meeting notes.

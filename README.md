@@ -139,6 +139,21 @@ If a summarization model is selected and available, summarization starts automat
 - **Open Questions** — unresolved topics
 - **Full Summary** — detailed narrative overview with paragraph breaks
 
+### Custom System Prompt
+
+You can customise the instructions sent to the LLM when summarising meetings:
+
+1. Open **Settings** (gear icon) → **Summarization**
+2. Click **"Edit Prompt"**
+3. Modify the prompt in the editor and click **Save**
+
+Use placeholders to inject dynamic values:
+- `{{duration}}` — meeting duration in minutes
+- `{{context}}` — the detected meeting app (e.g. "from Zoom")
+- `{{participants}}` — participant names from your calendar
+
+Click **"Reset to Default"** to restore the built-in prompt at any time. Your custom prompt persists across sessions.
+
 ### Copying Results
 
 Both the summary (as markdown) and raw transcript have copy buttons. Paste into your notes app, email, or document of choice.
