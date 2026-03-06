@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.15
+
+- **Expanded model library** — Added Qwen3 30B MoE, Qwen3 4B, and Llama 3.1 8B to the built-in MLX model list. The new Qwen3 30B MoE (mixture-of-experts, only 3B active parameters) delivers the best summary quality while running efficiently on 32GB machines. Qwen3 4B is a great pick for 16GB Macs.
+- **Model recommendations in README** — Added a comparison table and guidance on which model to choose based on your available RAM.
+
 ## 1.1.14
 
 - **Fixed transcript duplication** — Transcripts no longer contain cascading repeated text. The live transcript buffer was incorrectly committing the full accumulated text as each segment, causing massive duplication when segments were joined.

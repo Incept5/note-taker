@@ -48,6 +48,25 @@ NoteTaker supports two backends for local summarization:
 
 MLX runs models directly on Apple Silicon with no external dependencies. On first use, open **Settings** and download an MLX model — everything is managed within the app. No terminal commands, no servers to run.
 
+##### Built-in Models
+
+| Model | Size | RAM Needed | Best For |
+|---|---|---|---|
+| **Qwen3 30B MoE** | ~17 GB | ~20 GB | Best summary quality. 30B parameters but only 3B active (mixture-of-experts), so it runs efficiently. **Recommended if you have 32GB RAM.** |
+| **Qwen3 4B** | ~2.3 GB | ~4 GB | Fast and capable. **Recommended for 16GB machines.** |
+| Llama 3.1 8B | ~4 GB | ~8 GB | Strong general-purpose summarization. Good middle ground. |
+| Llama 3.2 3B | ~2 GB | ~4 GB | Lightweight and quick. Decent quality for short meetings. |
+| Qwen 2.5 7B | ~4 GB | ~8 GB | High quality, similar tier to Llama 3.1 8B. |
+| Mistral 7B v0.3 | ~4 GB | ~8 GB | Solid general-purpose option. |
+| Qwen 2.5 3B | ~2 GB | ~4 GB | Fast with low RAM usage. |
+
+**Which model should I choose?**
+- **32 GB RAM:** Use **Qwen3 30B MoE** — it produces the best summaries by a clear margin, and the mixture-of-experts architecture keeps it fast despite the large parameter count.
+- **16 GB RAM:** Use **Qwen3 4B** — excellent quality-to-size ratio, runs comfortably alongside a browser and video call.
+- **Tight on RAM or want fastest results:** Use **Llama 3.2 3B** or **Qwen 2.5 3B** — smallest footprint, still produces useful summaries.
+
+You can also add any HuggingFace MLX model by pasting its ID in Settings — the built-in list is just a curated starting point.
+
 #### Ollama (Alternative)
 
 If you prefer [Ollama](https://ollama.com/), switch the backend to Ollama in Settings, then install and start the server:

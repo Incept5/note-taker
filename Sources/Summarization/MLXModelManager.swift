@@ -205,6 +205,27 @@ final class MLXModelManager: ObservableObject {
     private static func knownModels() -> [MLXModel] {
         [
             MLXModel(
+                id: "mlx-community/Qwen3-30B-A3B-Instruct-2507-4bit",
+                displayName: "Qwen3 30B MoE",
+                description: "Best quality — 30B MoE, only 3B active. Needs 32GB RAM.",
+                sizeLabel: "~17 GB",
+                ramRequired: "~20 GB RAM"
+            ),
+            MLXModel(
+                id: "mlx-community/Qwen3-4B-Instruct-2507-4bit",
+                displayName: "Qwen3 4B",
+                description: "Fast and capable, great for 16GB machines.",
+                sizeLabel: "~2.3 GB",
+                ramRequired: "~4 GB RAM"
+            ),
+            MLXModel(
+                id: "mlx-community/Meta-Llama-3.1-8B-Instruct-4bit",
+                displayName: "Llama 3.1 8B",
+                description: "Strong general-purpose summarization.",
+                sizeLabel: "~4 GB",
+                ramRequired: "~8 GB RAM"
+            ),
+            MLXModel(
                 id: "mlx-community/Llama-3.2-3B-Instruct-4bit",
                 displayName: "Llama 3.2 3B",
                 description: "Good balance of speed and quality.",
