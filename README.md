@@ -158,6 +158,10 @@ If a summarization model is selected and available, summarization starts automat
 - **Open Questions** — unresolved topics
 - **Full Summary** — detailed narrative overview with paragraph breaks
 
+### Re-summarize with Different Models
+
+Want to compare how different models summarize your meeting? Open any meeting from History and click the **"Re-summarize"** button in the summary panel header. It uses whichever model is currently selected in Settings, so you can switch models and re-summarize the same transcript to compare quality.
+
 ### Custom System Prompt
 
 You can customise the instructions sent to the LLM when summarising meetings:
