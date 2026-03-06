@@ -3,6 +3,7 @@ import AppKit
 import Combine
 
 @main
+
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
