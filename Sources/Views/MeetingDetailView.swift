@@ -83,6 +83,28 @@ struct MeetingDetailView: View {
                                 copiedSummary = false
                             }
                         }
+                    },
+                    extraButtons: {
+                        if meeting.combinedTranscript != nil {
+                            if appState.reSummarizingMeetingId == meeting.id {
+                                ProgressView()
+                                    .controlSize(.small)
+                                    .padding(.trailing, 4)
+                            } else {
+                                Button(action: {
+                                    appState.reSummarize(meeting: meeting)
+                                }) {
+                                    HStack(spacing: 3) {
+                                        Image(systemName: "arrow.triangle.2.circlepath")
+                                        Text("Re-summarize")
+                                    }
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(appState.reSummarizingMeetingId != nil)
+                            }
+                        }
                     }
                 ) {
                     if let summary = meeting.decodedSummary() {
@@ -127,11 +149,12 @@ struct MeetingDetailView: View {
 
     // MARK: - Panel
 
-    private func panelView<Content: View>(
+    private func panelView<Content: View, Extra: View>(
         title: String,
         copied: Binding<Bool>,
         hasContent: Bool,
         onCopy: @escaping () -> Void,
+        @ViewBuilder extraButtons: () -> Extra = { EmptyView() },
         @ViewBuilder content: () -> Content
     ) -> some View {
         VStack(spacing: 0) {
@@ -140,6 +163,7 @@ struct MeetingDetailView: View {
                 Text(title)
                     .font(.subheadline.bold())
                 Spacer()
+                extraButtons()
                 if hasContent {
                     Button(action: onCopy) {
                         HStack(spacing: 3) {

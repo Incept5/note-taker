@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.16
+
+- **Re-summarize with different models** — You can now re-summarize any existing meeting transcript using a different model. Open a meeting from History and click the "Re-summarize" button in the summary panel header. Switch models in Settings first, then re-summarize to compare quality across different LLMs.
+
 ## 1.1.15
 
 - **Expanded model library** — Added Qwen3 30B MoE, Qwen3 4B, and Llama 3.1 8B to the built-in MLX model list. The new Qwen3 30B MoE (mixture-of-experts, only 3B active parameters) delivers the best summary quality while running efficiently on 32GB machines. Qwen3 4B is a great pick for 16GB Macs.

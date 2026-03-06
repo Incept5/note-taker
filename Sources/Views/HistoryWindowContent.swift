@@ -7,8 +7,8 @@ struct HistoryWindowContent: View {
     var body: some View {
         if let meeting = selectedMeeting {
             HistoryWindowDetailView(
-                meeting: meeting,
                 appState: appState,
+                meetingId: meeting.id,
                 onBack: { selectedMeeting = nil }
             )
         } else {
@@ -71,12 +71,18 @@ struct HistoryWindowContent: View {
 
 /// Detail view shown inside the history window (reuses MeetingDetailView layout).
 private struct HistoryWindowDetailView: View {
-    let meeting: MeetingRecord
     @ObservedObject var appState: AppState
+    let meetingId: String
     let onBack: () -> Void
 
     @State private var copiedSummary = false
     @State private var copiedTranscript = false
+
+    /// Live meeting record from the store, so it refreshes after re-summarization.
+    private var meeting: MeetingRecord {
+        appState.meetingStore.recentMeetings.first(where: { $0.id == meetingId })
+            ?? MeetingRecord(id: meetingId, startedAt: .now, status: "unknown", createdAt: .now)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -147,6 +153,28 @@ private struct HistoryWindowDetailView: View {
                                 copiedSummary = false
                             }
                         }
+                    },
+                    extraButtons: {
+                        if meeting.combinedTranscript != nil {
+                            if appState.reSummarizingMeetingId == meeting.id {
+                                ProgressView()
+                                    .controlSize(.small)
+                                    .padding(.trailing, 4)
+                            } else {
+                                Button(action: {
+                                    appState.reSummarize(meeting: meeting)
+                                }) {
+                                    HStack(spacing: 3) {
+                                        Image(systemName: "arrow.triangle.2.circlepath")
+                                        Text("Re-summarize")
+                                    }
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(appState.reSummarizingMeetingId != nil)
+                            }
+                        }
                     }
                 ) {
                     if let summary = meeting.decodedSummary() {
@@ -191,11 +219,12 @@ private struct HistoryWindowDetailView: View {
 
     // MARK: - Panel
 
-    private func panelView<Content: View>(
+    private func panelView<Content: View, Extra: View>(
         title: String,
         copied: Binding<Bool>,
         hasContent: Bool,
         onCopy: @escaping () -> Void,
+        @ViewBuilder extraButtons: () -> Extra = { EmptyView() },
         @ViewBuilder content: () -> Content
     ) -> some View {
         VStack(spacing: 0) {
@@ -203,6 +232,7 @@ private struct HistoryWindowDetailView: View {
                 Text(title)
                     .font(.subheadline.bold())
                 Spacer()
+                extraButtons()
                 if hasContent {
                     Button(action: onCopy) {
                         HStack(spacing: 3) {

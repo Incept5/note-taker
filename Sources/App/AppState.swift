@@ -56,6 +56,8 @@ final class AppState: ObservableObject {
     @Published var showingOnboarding = false
     @Published var showingModelPicker = false
     @Published var navigation: NavigationDestination = .none
+    /// Non-nil while re-summarizing a historical meeting (holds the meeting ID).
+    @Published var reSummarizingMeetingId: String?
 
     @Published var summarizationBackend: String {
         didSet {
@@ -569,6 +571,76 @@ final class AppState: ObservableObject {
                     try? meetingStore.updateStatus(id: id, status: "error")
                 }
             }
+        }
+    }
+
+    // MARK: - Re-summarize
+
+    /// Re-summarize an existing meeting's transcript using the currently selected model.
+    func reSummarize(meeting: MeetingRecord) {
+        guard reSummarizingMeetingId == nil else {
+            logger.info("Re-summarization already in progress")
+            return
+        }
+
+        guard let transcription = meeting.decodedTranscription() else {
+            logger.warning("Cannot re-summarize: no transcript for meeting \(meeting.id)")
+            return
+        }
+
+        guard transcriptHasSufficientContent(transcription) else {
+            logger.info("Re-summarize skipped — insufficient transcript content")
+            return
+        }
+
+        // Configure summarization service with current model selection
+        summarizationService.customSystemPrompt = customSystemPrompt
+
+        if summarizationBackend == "mlx" {
+            guard let modelId = selectedMLXModel else {
+                logger.warning("Re-summarize skipped: no MLX model selected")
+                return
+            }
+            guard mlxModelManager.modelIsDownloaded(modelId) else {
+                logger.warning("Re-summarize skipped: MLX model '\(modelId)' not downloaded")
+                return
+            }
+            summarizationService.backend = .mlx
+            summarizationService.selectedMLXModelId = modelId
+        } else {
+            guard let model = selectedOllamaModel else {
+                logger.warning("Re-summarize skipped: no Ollama model selected")
+                return
+            }
+            summarizationService.backend = .ollama
+            summarizationService.selectedModel = model
+        }
+
+        reSummarizingMeetingId = meeting.id
+
+        Task {
+            do {
+                let participants = meeting.decodedParticipants()
+                let duration = meeting.durationSeconds ?? 0
+
+                let summary = try await summarizationService.summarize(
+                    transcript: transcription.combinedText,
+                    appName: meeting.appName,
+                    duration: duration,
+                    participants: participants
+                )
+
+                try? meetingStore.updateWithSummary(id: meeting.id, summary: summary)
+
+                // Refresh the detail view with the updated record
+                if let updated = try? meetingStore.loadMeeting(id: meeting.id) {
+                    navigation = .meetingDetail(updated)
+                }
+            } catch {
+                logger.error("Re-summarization failed: \(error.localizedDescription)")
+            }
+
+            reSummarizingMeetingId = nil
         }
     }
 
