@@ -374,9 +374,13 @@ final class AppState: ObservableObject {
                 try? meetingStore.updateWithRecordingComplete(id: id, duration: result.duration)
             }
 
-            // Use live transcript buffer if we have segments, otherwise WhisperKit fallback
-            if !liveTranscriptSegments.isEmpty {
-                // Fix up the last segment's endTime to match actual duration
+            // Always use WhisperKit for the final transcript (better accuracy than SFSpeech).
+            // SFSpeech live text was already shown during recording as a preview.
+            if modelManager.selectedModel != nil {
+                logger.info("Starting WhisperKit transcription for accurate final transcript")
+                startTranscription(audio: result)
+            } else if !liveTranscriptSegments.isEmpty {
+                // No WhisperKit model selected — fall back to SFSpeech transcript
                 let lastIdx = liveTranscriptSegments.count - 1
                 liveTranscriptSegments[lastIdx] = TranscriptSegment(
                     text: liveTranscriptSegments[lastIdx].text,
@@ -386,11 +390,11 @@ final class AppState: ObservableObject {
 
                 let fullText = liveTranscriptSegments.map(\.text).joined(separator: " ")
                 let transcript = TimestampedTranscript(segments: liveTranscriptSegments, fullText: fullText)
-                logger.info("Using live transcript buffer: \(self.liveTranscriptSegments.count) segments, \(fullText.count) chars — skipping WhisperKit")
+                logger.info("No WhisperKit model — using SFSpeech transcript: \(self.liveTranscriptSegments.count) segments, \(fullText.count) chars")
                 startTranscriptionWithStreamingSegments(audio: result, streamingTranscript: transcript)
             } else {
-                logger.info("No live transcript — falling back to WhisperKit batch transcription")
-                startTranscription(audio: result)
+                logger.warning("No live transcript and no WhisperKit model — cannot transcribe")
+                phase = .error("No transcription model available. Please select a WhisperKit model in Settings.")
             }
         } else {
             phase = .idle
