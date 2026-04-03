@@ -29,6 +29,9 @@ struct MeetingSummary: Codable {
     let decisions: [String]?
     let openQuestions: [String]?
 
+    // Speaker attribution (optional, populated when calendar participants are available)
+    let speakerAttributions: [String: [String]]?
+
     // MARK: - Computed accessors with fallbacks for old data
 
     var effectiveOverview: String {
@@ -136,6 +139,18 @@ extension MeetingSummary {
                 text += "- \(step)\n"
             }
             text += "\n"
+        }
+
+        // Speaker Contributions
+        if let attributions = speakerAttributions, !attributions.isEmpty {
+            text += "## Speaker Contributions\n"
+            for (name, contributions) in attributions.sorted(by: { $0.key < $1.key }) {
+                text += "### \(name)\n"
+                for contribution in contributions {
+                    text += "- \(contribution)\n"
+                }
+                text += "\n"
+            }
         }
 
         // Open Questions (old format fallback)

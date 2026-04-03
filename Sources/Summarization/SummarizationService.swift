@@ -156,6 +156,7 @@ final class SummarizationService: ObservableObject {
     - "nextSteps": An array of concrete next steps with timing where mentioned. These \
     are forward-looking items that aren't necessarily assigned to a specific person.
 
+    {{speakerAttributionInstructions}}\
     Respond ONLY with valid JSON, no markdown formatting or code fences.
     If a section has no items, use an empty array.
     """
@@ -174,10 +175,27 @@ final class SummarizationService: ObservableObject {
             ? customSystemPrompt!
             : Self.defaultSystemPromptTemplate
 
+        let speakerAttribution: String
+        if let participants, !participants.isEmpty {
+            speakerAttribution = """
+
+            - "speakerAttributions": An object where keys are participant names and values are \
+            arrays of strings describing their key contributions or statements. Analyze the \
+            conversation for contextual clues about who is speaking — self-references, being \
+            addressed by name, role-specific language, topic ownership. Only include participants \
+            you can confidently identify from context. Omit this key entirely if you cannot \
+            identify any speakers.
+
+            """
+        } else {
+            speakerAttribution = ""
+        }
+
         return template
             .replacingOccurrences(of: "{{context}}", with: context)
             .replacingOccurrences(of: "{{duration}}", with: "\(durationMinutes)")
             .replacingOccurrences(of: "{{participants}}", with: participantLine)
+            .replacingOccurrences(of: "{{speakerAttributionInstructions}}", with: speakerAttribution)
     }
 
     private func parseSummary(response: String, model: String, duration: TimeInterval) -> MeetingSummary {
@@ -204,7 +222,8 @@ final class SummarizationService: ObservableObject {
                     summary: json["summary"] as? String,
                     keyPoints: json["keyPoints"] as? [String],
                     decisions: json["decisions"] as? [String],
-                    openQuestions: json["openQuestions"] as? [String]
+                    openQuestions: json["openQuestions"] as? [String],
+                    speakerAttributions: parseSpeakerAttributions(json["speakerAttributions"])
                 ))
             }
         }
@@ -232,7 +251,8 @@ final class SummarizationService: ObservableObject {
             summary: response,
             keyPoints: nil,
             decisions: nil,
-            openQuestions: nil
+            openQuestions: nil,
+            speakerAttributions: nil
         ))
     }
 
@@ -252,8 +272,20 @@ final class SummarizationService: ObservableObject {
             summary: summary.summary.map { cleanSummaryText($0) },
             keyPoints: summary.keyPoints.map { cleanStringArray($0) },
             decisions: summary.decisions.map { cleanStringArray($0) },
-            openQuestions: summary.openQuestions.map { cleanStringArray($0) }
+            openQuestions: summary.openQuestions.map { cleanStringArray($0) },
+            speakerAttributions: summary.speakerAttributions
         )
+    }
+
+    private func parseSpeakerAttributions(_ value: Any?) -> [String: [String]]? {
+        guard let dict = value as? [String: Any] else { return nil }
+        var result: [String: [String]] = [:]
+        for (name, contributions) in dict {
+            if let arr = contributions as? [String], !arr.isEmpty {
+                result[name] = arr
+            }
+        }
+        return result.isEmpty ? nil : result
     }
 
     private func parseDiscussionTopics(_ value: Any?) -> [DiscussionTopic]? {
@@ -438,7 +470,8 @@ final class SummarizationService: ObservableObject {
             summary: summaryMatch,
             keyPoints: extractJSONArrayOfStrings(key: "keyPoints", from: response).nilIfEmpty,
             decisions: extractJSONArrayOfStrings(key: "decisions", from: response).nilIfEmpty,
-            openQuestions: extractJSONArrayOfStrings(key: "openQuestions", from: response).nilIfEmpty
+            openQuestions: extractJSONArrayOfStrings(key: "openQuestions", from: response).nilIfEmpty,
+            speakerAttributions: nil
         )
     }
 
@@ -568,7 +601,8 @@ final class SummarizationService: ObservableObject {
             summary: summaryText,
             keyPoints: extractBulletItems(from: sections["keyPoints"]).nilIfEmpty,
             decisions: extractBulletItems(from: sections["decisions"]).nilIfEmpty,
-            openQuestions: extractBulletItems(from: sections["openQuestions"]).nilIfEmpty
+            openQuestions: extractBulletItems(from: sections["openQuestions"]).nilIfEmpty,
+            speakerAttributions: nil
         )
     }
 

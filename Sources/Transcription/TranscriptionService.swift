@@ -126,7 +126,10 @@ final class TranscriptionService: ObservableObject {
             }
         }
 
-        return TimestampedTranscript(segments: segments, fullText: fullText)
+        // Post-process to remove hallucinated/repetitive segments
+        let raw = TimestampedTranscript(segments: segments, fullText: fullText)
+        let (cleaned, _) = TranscriptPostProcessor.process(raw)
+        return cleaned
     }
 
     /// Remove raw Whisper special tokens from text (e.g. `<|startoftranscript|>`, `<|en|>`, `<|0.00|>`).

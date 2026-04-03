@@ -347,6 +347,23 @@ private struct HistoryWindowDetailView: View {
             }
         }
 
+        // Speaker Contributions
+        if let attributions = summary.speakerAttributions, !attributions.isEmpty {
+            sectionHeader("Speaker Contributions")
+            ForEach(attributions.keys.sorted(), id: \.self) { name in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(name)
+                        .font(.caption.bold())
+                        .foregroundStyle(.cyan)
+                    if let contributions = attributions[name] {
+                        ForEach(contributions, id: \.self) { contribution in
+                            bulletPoint(contribution)
+                        }
+                    }
+                }
+            }
+        }
+
         // Open Questions (old format)
         let questions = summary.effectiveOpenQuestions
         if !questions.isEmpty && !summary.isNewFormat {

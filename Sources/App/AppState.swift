@@ -389,8 +389,11 @@ final class AppState: ObservableObject {
                 )
 
                 let fullText = liveTranscriptSegments.map(\.text).joined(separator: " ")
-                let transcript = TimestampedTranscript(segments: liveTranscriptSegments, fullText: fullText)
-                logger.info("No WhisperKit model — using SFSpeech transcript: \(self.liveTranscriptSegments.count) segments, \(fullText.count) chars")
+                let rawTranscript = TimestampedTranscript(segments: liveTranscriptSegments, fullText: fullText)
+
+                // Post-process to remove hallucinated/repetitive segments
+                let (transcript, removedCount) = TranscriptPostProcessor.process(rawTranscript)
+                logger.info("No WhisperKit model — using SFSpeech transcript: \(self.liveTranscriptSegments.count) segments (\(removedCount) removed by post-processing), \(transcript.fullText.count) chars")
                 startTranscriptionWithStreamingSegments(audio: result, streamingTranscript: transcript)
             } else {
                 logger.warning("No live transcript and no WhisperKit model — cannot transcribe")
@@ -496,8 +499,15 @@ final class AppState: ObservableObject {
     }
 
     /// Check whether a transcript has enough meaningful content to warrant summarization.
-    /// Returns true if the transcript has at least 50 words with sufficient variety.
-    private func transcriptHasSufficientContent(_ transcription: MeetingTranscription) -> Bool {
+    /// Returns true if the transcript has at least 50 words with sufficient variety
+    /// and isn't dominated by filler words.
+    private func transcriptHasSufficientContent(_ transcription: MeetingTranscription, duration: TimeInterval? = nil) -> Bool {
+        // Minimum recording duration check
+        if let duration, duration < 30 {
+            logger.info("Recording too short for summarization: \(Int(duration))s (need 30s)")
+            return false
+        }
+
         let text = transcription.combinedText
         let words = text.split(whereSeparator: { $0.isWhitespace || $0.isNewline })
             .map { $0.lowercased() }
@@ -516,13 +526,24 @@ final class AppState: ObservableObject {
             return false
         }
 
-        logger.info("Transcript content check passed: \(words.count) words, \(String(format: "%.0f", uniqueRatio * 100))% unique")
+        // Check filler word density — reject if fillers dominate the transcript
+        let fillerWords: Set<String> = ["um", "uh", "uhm", "uhh", "umm", "yeah", "yep", "yup",
+                                         "ok", "okay", "like", "so", "right", "mhm", "hmm", "hm",
+                                         "mm", "ah", "oh", "well"]
+        let fillerCount = words.filter { fillerWords.contains($0) }.count
+        let fillerRatio = Double(fillerCount) / Double(words.count)
+        guard fillerRatio <= 0.5 else {
+            logger.info("Transcript too filler-heavy for summarization: \(String(format: "%.0f", fillerRatio * 100))% fillers (\(fillerCount)/\(words.count))")
+            return false
+        }
+
+        logger.info("Transcript content check passed: \(words.count) words, \(String(format: "%.0f", uniqueRatio * 100))% unique, \(String(format: "%.0f", fillerRatio * 100))% fillers")
         return true
     }
 
     func startSummarization(audio: CapturedAudio, transcription: MeetingTranscription) {
         // Gate: skip summarization if transcript lacks meaningful content
-        guard transcriptHasSufficientContent(transcription) else {
+        guard transcriptHasSufficientContent(transcription, duration: audio.duration) else {
             logger.info("Skipping summarization — insufficient transcript content")
             return
         }

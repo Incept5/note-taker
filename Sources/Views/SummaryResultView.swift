@@ -109,6 +109,24 @@ struct SummaryResultView: View {
                         }
                     }
 
+                    // Speaker Contributions
+                    if let attributions = summary.speakerAttributions, !attributions.isEmpty {
+                        sectionCard("Speaker Contributions", icon: "person.2", color: .cyan) {
+                            ForEach(attributions.keys.sorted(), id: \.self) { name in
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(name)
+                                        .font(.caption.bold())
+                                        .foregroundStyle(.cyan)
+                                    if let contributions = attributions[name] {
+                                        ForEach(contributions, id: \.self) { contribution in
+                                            bulletItem(contribution, color: .cyan)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // Open Questions (old format fallback)
                     let questions = summary.effectiveOpenQuestions
                     if !questions.isEmpty && !summary.isNewFormat {
