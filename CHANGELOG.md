@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.17
+
+- **Speaker attribution in summaries** — When calendar participants are available, summaries now include a "Speaker Contributions" section that attributes key statements and contributions to individual speakers. The LLM uses contextual clues (self-references, being addressed by name, role-specific language) to identify who said what.
+- **Transcript post-processing** — A new `TranscriptPostProcessor` filters out hallucinated and repetitive segments from both SFSpeech and WhisperKit transcripts, producing cleaner text before summarization.
+- **Improved content gating** — Recordings shorter than 30 seconds are no longer sent to the LLM. Transcripts dominated by filler words (>50% "um", "uh", "yeah", etc.) are also rejected, preventing low-quality summaries.
+
 ## 1.1.16
 
 - **Re-summarize with different models** — You can now re-summarize any existing meeting transcript using a different model. Open a meeting from History and click the "Re-summarize" button in the summary panel header. Switch models in Settings first, then re-summarize to compare quality across different LLMs.

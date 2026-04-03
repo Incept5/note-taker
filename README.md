@@ -155,6 +155,7 @@ If a summarization model is selected and available, summarization starts automat
 - **Key Points** — important topics discussed
 - **Decisions** — what was agreed on
 - **Action Items** — tasks with owners where identifiable
+- **Speaker Contributions** — key statements attributed to individual participants (when calendar participants are available)
 - **Open Questions** — unresolved topics
 - **Full Summary** — detailed narrative overview with paragraph breaks
 
