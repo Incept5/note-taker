@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.18
+
+- **Auto-stop on silence** — Any recording (manual or automatic) now stops automatically after a configurable period of continuous silence, so a recording left running after a meeting ends won't continue for hours. Configurable in Settings (Off / 5 / 10 / 15 / 30 min), defaulting to 5 minutes. Unlike the existing auto-record silence detection, this applies to manual recordings too.
+
 ## 1.1.17
 
 - **Speaker attribution in summaries** — When calendar participants are available, summaries now include a "Speaker Contributions" section that attributes key statements and contributions to individual speakers. The LLM uses contextual clues (self-references, being addressed by name, role-specific language) to identify who said what.

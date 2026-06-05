@@ -27,8 +27,13 @@ schemes:
     build:
       targets:
         NoteTaker: all
+        NoteTakerTests: [test]
     run:
       config: Debug
+    test:
+      config: Debug
+      targets:
+        - NoteTakerTests
     archive:
       config: Release
 
@@ -57,3 +62,15 @@ targets:
         CODE_SIGN_ENTITLEMENTS: Resources/NoteTaker.entitlements
         GENERATE_INFOPLIST_FILE: false
         ENABLE_HARDENED_RUNTIME: true
+
+  # Hermetic logic tests — compiles the pure tracker source directly, no host app.
+  NoteTakerTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - Tests
+      - path: Sources/App/InactivitySilenceTracker.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.incept5.NoteTakerTests
+        GENERATE_INFOPLIST_FILE: true

@@ -117,6 +117,14 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Auto-stop any recording (manual or automatic) after this many minutes of continuous silence.
+    /// Safety net for recordings left running after a meeting ends. 0 = disabled.
+    @Published var inactivityAutoStopMinutes: Int {
+        didSet {
+            UserDefaults.standard.set(inactivityAutoStopMinutes, forKey: "inactivityAutoStopMinutes")
+        }
+    }
+
     @Published var speechRecognitionOnDeviceOnly: Bool {
         didSet {
             UserDefaults.standard.set(speechRecognitionOnDeviceOnly, forKey: "speechRecognitionOnDeviceOnly")
@@ -197,6 +205,10 @@ final class AppState: ObservableObject {
     private var silenceWindow: [Bool] = []
     /// Seconds elapsed since silence monitoring started (negative = grace period).
     private var silenceMonitorElapsed: Int = 0
+    /// Timer for the inactivity auto-stop that applies to every recording (manual or auto).
+    private var inactivityTimer: Timer?
+    /// Tracks consecutive silence to decide when to auto-stop an idle recording.
+    private var inactivityTracker = InactivitySilenceTracker(timeoutMinutes: 0, silenceLevelThreshold: AppState.silenceLevelThreshold)
     /// Timer for detecting meeting audio before starting a recording.
     private var meetingDetectionTimer: Timer?
     /// How many consecutive seconds of audio detected during meeting detection.
@@ -247,6 +259,7 @@ final class AppState: ObservableObject {
         googleCalendarEmail = googleAuthService.signedInEmail
         let savedRetention = UserDefaults.standard.integer(forKey: "recordingRetentionDays")
         recordingRetentionDays = savedRetention > 0 ? savedRetention : 28
+        inactivityAutoStopMinutes = UserDefaults.standard.object(forKey: "inactivityAutoStopMinutes") as? Int ?? 5
         speechRecognitionOnDeviceOnly = UserDefaults.standard.object(forKey: "speechRecognitionOnDeviceOnly") as? Bool ?? true
         customSystemPrompt = UserDefaults.standard.string(forKey: "customSystemPrompt")
 
@@ -297,6 +310,9 @@ final class AppState: ObservableObject {
                 )
                 let now = Date()
                 phase = .recording(since: now, liveText: "")
+
+                // Auto-stop safety net: stops any recording after prolonged silence
+                startInactivityMonitoring()
 
                 // Reset live transcript buffer
                 liveTranscriptSegments = []
@@ -356,6 +372,7 @@ final class AppState: ObservableObject {
     func stopRecording() {
         // Clear auto-record trigger so app termination won't try to stop again
         stopSilenceMonitoring()
+        stopInactivityMonitoring()
         autoRecordTrigger = nil
 
         // Commit whatever's in the current chunk before we destroy anything
@@ -798,6 +815,41 @@ final class AppState: ObservableObject {
         calendarEndTimer = nil
         silenceWindow = []
         silenceMonitorElapsed = 0
+    }
+
+    /// Start a 1-second timer that auto-stops the recording after a configurable period of
+    /// continuous silence. Unlike `startSilenceMonitoring`, this applies to every recording —
+    /// manual or automatic — as a safety net for recordings left running after a meeting ends.
+    private func startInactivityMonitoring() {
+        inactivityTracker = InactivitySilenceTracker(
+            timeoutMinutes: inactivityAutoStopMinutes,
+            silenceLevelThreshold: Self.silenceLevelThreshold
+        )
+        guard inactivityTracker.isEnabled else { return }
+
+        inactivityTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.checkInactivity()
+            }
+        }
+    }
+
+    private func stopInactivityMonitoring() {
+        inactivityTimer?.invalidate()
+        inactivityTimer = nil
+        inactivityTracker.reset()
+    }
+
+    private func checkInactivity() {
+        guard inactivityTracker.isEnabled, case .recording = phase else {
+            stopInactivityMonitoring()
+            return
+        }
+
+        if inactivityTracker.registerSecond(level: captureService.systemAudioLevel) {
+            logger.info("Auto-stopping recording — \(self.inactivityAutoStopMinutes)min of continuous silence")
+            stopRecording()
+        }
     }
 
     /// Schedule a one-shot timer to auto-stop recording after the calendar event's end time + grace period.
