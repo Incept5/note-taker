@@ -20,6 +20,12 @@ final class ModelManager: ObservableObject {
     private static let selectedModelKey = "selectedWhisperModel"
     private static let modelRepo = "argmaxinc/whisperkit-coreml"
 
+    /// Where WhisperKit saves its models. Without this setting the download library
+    /// saves to ~/Documents/huggingface, which cloud backup tools may upload.
+    nonisolated static let whisperDownloadBase = URL.applicationSupportDirectory
+        .appending(path: "NoteTaker")
+        .appending(path: "huggingface")
+
     init() {
         selectedModelName = UserDefaults.standard.string(forKey: Self.selectedModelKey)
         models = Self.knownModels()
@@ -65,6 +71,7 @@ final class ModelManager: ObservableObject {
             do {
                 _ = try await WhisperKit.download(
                     variant: id,
+                    downloadBase: Self.whisperDownloadBase,
                     from: "argmaxinc/whisperkit-coreml",
                     progressCallback: { progress in
                         onProgress(progress.fractionCompleted)
@@ -81,6 +88,14 @@ final class ModelManager: ObservableObject {
 
     /// Returns the local folder path for a downloaded model, or nil if not found.
     func modelFolder(for variant: String) -> String? {
+        let savedModel = Self.whisperDownloadBase
+            .appending(path: "models")
+            .appending(path: Self.modelRepo)
+            .appending(path: "openai_whisper-\(variant)")
+        if FileManager.default.fileExists(atPath: savedModel.path) {
+            return savedModel.path
+        }
+
         let base = URL.homeDirectory
             .appending(path: "Library/Caches")
             .appending(path: "com.incept5.NoteTaker")

@@ -156,6 +156,7 @@ final class TranscriptionService: ObservableObject {
         do {
             modelURL = try await WhisperKit.download(
                 variant: model,
+                downloadBase: ModelManager.whisperDownloadBase,
                 useBackgroundSession: false,
                 from: "argmaxinc/whisperkit-coreml",
                 progressCallback: { [weak self] progress in
