@@ -72,6 +72,7 @@ final class StreamingTranscriber {
 
         let modelURL = try await WhisperKit.download(
             variant: model.id,
+            downloadBase: ModelManager.whisperDownloadBase,
             useBackgroundSession: false,
             from: "argmaxinc/whisperkit-coreml",
             progressCallback: nil
